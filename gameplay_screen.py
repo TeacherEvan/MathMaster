@@ -1222,8 +1222,8 @@ class GameplayScreen(tk.Toplevel):
                 if self.error_animation:
                     self.error_animation.draw_crack_effect()
     
-                if self.incorrect_clicks >= self.max_incorrect_clicks:
-                    self.trigger_game_over()
+                # Game over functionality permanently removed as per user request
+                # Players should never be penalized for making mistakes
         except Exception as e:
             logging.error(f"Critical error in handle_canvas_c_click: {e}")
             import traceback
@@ -1388,28 +1388,10 @@ class GameplayScreen(tk.Toplevel):
 
     def trigger_game_over(self):
         """Handle game over state"""
-        if self.game_over:
-            return
-            
-        self.game_over = True
-        logging.info("Game Over! Too many incorrect clicks.")
-        
-        # Clear save when game over happens
-        self.clear_saved_game()
-        
-        # Stop falling symbols
-        if hasattr(self, 'animation_after_id'):
-            self.after_cancel(self.animation_after_id)
-        
-        # Draw shatter effect using the error animation
-        if self.error_animation:
-            self.error_animation.draw_shatter_effect()
-        
-        # Show all remaining characters in red
-        self.after(1000, self.reveal_all_remaining_red)
-        
-        # Show game over popup
-        self.after(2000, self.show_level_failed_popup)
+        logging.info("NOTICE: Game over functionality has been permanently removed")
+        # This function is kept as a stub to maintain compatibility with any code that calls it
+        # but it will not actually trigger any game over state
+        return
 
     def reveal_all_remaining_red(self):
         """Reveals all hidden solution characters in red"""
@@ -1427,51 +1409,64 @@ class GameplayScreen(tk.Toplevel):
         self.visible_chars = set() # Clear visible list as game is over
 
     def show_level_failed_popup(self):
-        """Displays the 'Level Failed' pop-up window"""
+        """Displays the enhanced 'Level Failed' pop-up window"""
         if not self.winfo_exists(): return # Don't show if main window closed
-
-        popup = tk.Toplevel(self)
-        popup.title("Level Failed")
-        popup.geometry("300x150")
-        popup.configure(bg="#220000") # Dark red background
-        popup.resizable(False, False)
-
-        # Center the popup
-        x = self.winfo_x() + (self.winfo_width() // 2) - 150
-        y = self.winfo_y() + (self.winfo_height() // 2) - 75
-        popup.geometry(f"+{x}+{y}")
-
-        # Make popup modal (grab focus)
-        popup.grab_set()
-        popup.focus_set()
-        popup.transient(self) # Associate with main game window
-
-        label = tk.Label(popup, text="Try Again?", font=("Courier New", 18, "bold"), fg="#FF4444", bg="#220000")
-        label.pack(pady=20)
-
-        button_frame = tk.Frame(popup, bg="#220000")
-        button_frame.pack(pady=10)
-
-        retry_button = tk.Button(
-            button_frame, text="Retry", width=10,
-            command=lambda: self.handle_popup_choice(popup, "retry"),
-            bg="#550000", fg="#FFAAAA", font=("Courier New", 12)
+        
+        # Import the enhanced popup class
+        from level_complete_popup import LevelCompletePopup
+        
+        # Create failure message based on current level
+        if self.current_level == "Easy":
+            subtitle = "Don't worry! Math takes practice. Would you like to try again?"
+        elif self.current_level == "Medium":
+            subtitle = "This level is challenging, but you're getting closer. Try again?"
+        elif self.current_level == "Division":
+            subtitle = "Division can be tricky. Ready to give it another shot?"
+        else:
+            subtitle = "Keep practicing - you'll solve it next time!"
+        
+        # Create and show the enhanced popup with red theme
+        popup_manager = LevelCompletePopup(self)
+        
+        # Override colors for failure theme
+        popup_manager.colors = {
+            "background": "#1a0000",  # Very dark red
+            "title": "#ff5d5d",       # Bright red
+            "subtitle": "#ee9090",    # Light red
+            "button_bg": "#4d0000",   # Dark red
+            "button_fg": "#ffcccc",   # Very light red
+            "button_hover": "#660000",  # Slightly brighter red
+            "particle_colors": ["#ff5d5d", "#ee9090", "#ff0000", "#ff6666", "#cc3333"]
+        }
+        
+        popup = popup_manager.show(
+            title="Try Again?",
+            subtitle=subtitle,
+            callback_next=lambda: self.handle_popup_choice(None, "retry"),
+            callback_level_select=lambda: self.handle_popup_choice(None, "level_select"),
+            width=400,
+            height=300
         )
-        retry_button.grid(row=0, column=0, padx=10)
-
-        level_select_button = tk.Button(
-            button_frame, text="Level Select", width=12,
-            command=lambda: self.handle_popup_choice(popup, "level_select"),
-             bg="#550000", fg="#FFAAAA", font=("Courier New", 12)
-        )
-        level_select_button.grid(row=0, column=1, padx=10)
-
+        
+        # Update button text
+        for child in popup.winfo_children():
+            if isinstance(child, tk.Canvas):
+                for item in child.find_withtag("window"):
+                    button_frame = child.itemcget(item, "window")
+                    if button_frame:
+                        for button in button_frame.winfo_children():
+                            if button.cget("text") == "Next Problem":
+                                button.config(text="Retry")
+        
         # Wait for the popup to be closed
         self.wait_window(popup)
 
     def handle_popup_choice(self, popup, choice):
-        """Handles the button clicks in the level failed popup"""
-        popup.destroy() # Close the popup
+        """Handles the button clicks in level popups"""
+        # Close the popup if it was provided and still exists
+        if popup and popup.winfo_exists():
+            popup.destroy()
+            
         logging.info(f"Popup choice selected: {choice}")
         
         if choice == "retry":
@@ -1537,13 +1532,21 @@ class GameplayScreen(tk.Toplevel):
             self.animation_after_id = None
             logging.info("check_level_complete: Cancelled animation for level complete.")
 
-        # Trigger the lock celebration animation
+        # Trigger the lock celebration animation with completion callback
         if self.lock_animation:
             logging.info("check_level_complete: Triggering lock celebration animation.")
+            
+            # Create a callback function to show the popup after animation
+            def show_popup_after_animation():
+                logging.info("Lock animation complete, showing level complete popup")
+                self.show_level_complete_popup()
+            
+            # Start celebration and schedule popup display
             self.lock_animation.celebrate_problem_solved()
             
-        # Show success popup after the animation has time to display
-        self.after(2000, self.show_level_complete_popup)
+            # Schedule popup after animation (use a callback if supported by lock_animation)
+            # For now, we use a timer but we can modify lock_animation to use callbacks later
+            self.after(2200, show_popup_after_animation)
         return True
 
     def level_complete(self):
@@ -1561,46 +1564,35 @@ class GameplayScreen(tk.Toplevel):
         self.after(500, self.show_level_complete_popup)
 
     def show_level_complete_popup(self):
-         """Displays the 'Level Complete' pop-up window"""
-         if not self.winfo_exists(): return
-
-         popup = tk.Toplevel(self)
-         popup.title("Success!")
-         popup.geometry("300x150")
-         popup.configure(bg="#002200") # Dark green background
-         popup.resizable(False, False)
-
-         # Center the popup
-         x = self.winfo_x() + (self.winfo_width() // 2) - 150
-         y = self.winfo_y() + (self.winfo_height() // 2) - 75
-         popup.geometry(f"+{x}+{y}")
-
-         # Make popup modal
-         popup.grab_set()
-         popup.focus_set()
-         popup.transient(self)
-
-         label = tk.Label(popup, text="Level Complete!", font=("Courier New", 18, "bold"), fg="#44FF44", bg="#002200")
-         label.pack(pady=20)
-
-         button_frame = tk.Frame(popup, bg="#002200")
-         button_frame.pack(pady=10)
-
-         next_button = tk.Button(
-             button_frame, text="Next Problem", width=15,
-             command=lambda: self.handle_popup_choice(popup, "next"),
-             bg="#005500", fg="#AAFFAA", font=("Courier New", 12)
-         )
-         next_button.grid(row=0, column=0, padx=10)
-
-         level_select_button = tk.Button(
-             button_frame, text="Level Select", width=12,
-             command=lambda: self.handle_popup_choice(popup, "level_select"),
-              bg="#005500", fg="#AAFFAA", font=("Courier New", 12)
-         )
-         level_select_button.grid(row=0, column=1, padx=10)
-
-         self.wait_window(popup)
+        """Displays the enhanced 'Level Complete' pop-up window"""
+        if not self.winfo_exists(): return
+        
+        # Import the enhanced popup class
+        from level_complete_popup import LevelCompletePopup
+        
+        # Create success message based on current level
+        if self.current_level == "Easy":
+            subtitle = "Great work! You've mastered the basics. Ready for a new challenge?"
+        elif self.current_level == "Medium":
+            subtitle = "Impressive skills! Your mathematical prowess is growing stronger."
+        elif self.current_level == "Division":
+            subtitle = "Excellent! You've conquered division problems with precision."
+        else:
+            subtitle = "Congratulations! You've solved the equation brilliantly."
+        
+        # Create and show the enhanced popup
+        popup_manager = LevelCompletePopup(self)
+        popup = popup_manager.show(
+            title="Level Complete!",
+            subtitle=subtitle,
+            callback_next=lambda: self.handle_popup_choice(None, "next"),
+            callback_level_select=lambda: self.handle_popup_choice(None, "level_select"),
+            width=400,
+            height=300
+        )
+        
+        # Wait for the popup to close before continuing
+        self.wait_window(popup)
 
     def exit_game(self, event=None):
         """Closes the gameplay screen"""
