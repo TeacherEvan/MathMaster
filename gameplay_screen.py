@@ -7,7 +7,8 @@ import math  # For math functions in gameplay animations
 import json
 import os
 from src.ui_components.feedback_manager import FeedbackManager # Added import
-from lock_animation import LockAnimation # Import the new lock animation class
+from lock_animation import LockAnimation # Import the lock animation class
+from error_animation import ErrorAnimation # Import the new error animation class
 
 # Import the problem sets from the module files
 try:
@@ -379,8 +380,7 @@ class GameplayScreen(tk.Toplevel):
         self.last_problems = []
         self.max_history = 3  # Remember last 3 problems to avoid repetition
         
-        # Clear any existing cracks from previous sessions
-        self.saved_cracks = []
+        # We don't need saved_cracks here anymore as it's managed by ErrorAnimation
         
         # Set fullscreen immediately
         self.update_idletasks()  # Process any pending events
@@ -420,6 +420,7 @@ class GameplayScreen(tk.Toplevel):
         self.auto_save_after_id = None # For managing auto-save loop
         self.completed_line_indices_for_problem = set() # For lock animation logic
         self.lock_animation = None # Placeholder for LockAnimation instance
+        self.error_animation = None # Placeholder for ErrorAnimation instance
         
         # Debug mode to print character details
         self.debug_mode = True
@@ -443,11 +444,10 @@ class GameplayScreen(tk.Toplevel):
             # If a game state was loaded, and it's not game over, prepare the board
             if not self.game_over:
                 # Cracks are usually cleared when a new problem loads or on game over.
-                # For a loaded game, existing saved cracks might be relevant if we were to save/load them.
+                # For a loaded game, existing cracks might be relevant if we were to save/load them.
                 # However, current save_game_state explicitly does not save cracks.
                 # So, clearing them here or relying on load_new_problem/trigger_game_over to handle is fine.
                 self.clear_all_cracks() # Ensure a clean start if loading a non-game-over state
-                self.saved_cracks = []
         
         # --- Print Debug Info ---
         if self.debug_mode:
@@ -495,6 +495,9 @@ class GameplayScreen(tk.Toplevel):
             self.symbol_canvas.winfo_width(),
             self.symbol_canvas.winfo_height()
         )
+        
+        # Initialize error animation for symbol canvas
+        self.error_animation = ErrorAnimation(self.symbol_canvas)
 
         # Add a flash_ids dictionary to track animation timers for character flashing
         self.flash_ids = {}
@@ -521,8 +524,9 @@ class GameplayScreen(tk.Toplevel):
         """Redraw elements that depend on window size"""
         # Redraw solution lines as their position depends on canvas size
         self.draw_solution_lines()
-        # Redraw saved cracks
-        self.redraw_saved_cracks()
+        # Redraw saved cracks using the error animation
+        if self.error_animation:
+            self.error_animation.redraw_saved_cracks()
         # Optionally redraw falling symbols if their spawn area changes significantly
         # self.draw_falling_symbols() # Might cause flicker, test needed
         if hasattr(self, 'symbol_canvas') and self.symbol_canvas.winfo_exists():
@@ -695,7 +699,7 @@ class GameplayScreen(tk.Toplevel):
             self.current_solution_steps = []
             return
 
-        self.clear_all_cracks()
+        self.clear_all_cracks()  # Clear any existing cracks
         self.falling_symbols_on_screen = []
         self.completed_line_indices_for_problem.clear() # Reset for new problem
         if self.lock_animation:
@@ -1214,9 +1218,9 @@ class GameplayScreen(tk.Toplevel):
                 )
     
                 self.incorrect_clicks += 1
-                crack_info = self.draw_crack_effect()
-                if crack_info:
-                    self.saved_cracks.append(crack_info)
+                # Use the error animation for incorrect clicks
+                if self.error_animation:
+                    self.error_animation.draw_crack_effect()
     
                 if self.incorrect_clicks >= self.max_incorrect_clicks:
                     self.trigger_game_over()
@@ -1376,139 +1380,11 @@ class GameplayScreen(tk.Toplevel):
              if tag in self.flash_ids: del self.flash_ids[tag]
              pass
 
-    def draw_crack_effect(self):
-        """Draws a root-like crack with fractal branching patterns"""
-        if not self.winfo_exists(): return None
+    # The draw_crack_effect method has been moved to the ErrorAnimation class
 
-        # Only allow cracks on the symbol_canvas (Window C)
-        target_canvas = self.symbol_canvas
+    # The redraw_saved_cracks method has been moved to the ErrorAnimation class
 
-        canvas_width = target_canvas.winfo_width()
-        canvas_height = target_canvas.winfo_height()
-
-        if canvas_width <= 1 or canvas_height <= 1: return None
-
-        # Generate random crack length with increased variability
-        minus_count = random.randint(11, 61)
-        crack_length = minus_count * 8
-
-        def create_fractal_branch(start_x, start_y, length, angle, depth, width):
-            """Recursively creates root-like branching patterns"""
-            if length < 10 or depth > 4: return []  # Stop if too small or too deep
-            
-            # Calculate end point
-            end_x = start_x + length * math.cos(angle)
-            end_y = start_y + length * math.sin(angle)
-            
-            try:
-                # Create main branch with randomly chosen color (blue or black)
-                crack_color = "#000000" if random.random() < 0.5 else "#B0C4DE"
-                branch_id = target_canvas.create_line(
-                    start_x, start_y, end_x, end_y,
-                    fill=crack_color,
-                    width=width,
-                    tags="crack",
-                    capstyle=tk.ROUND,  # Rounded ends for organic look
-                    joinstyle=tk.ROUND  # Rounded joints
-                )
-                
-                branches = [{
-                    'id': branch_id,
-                    'coords': [start_x, start_y, end_x, end_y],
-                    'width': width,
-                    'color': crack_color,
-                    'canvas': 'solution' if target_canvas == self.solution_canvas else 'symbol'
-                }]
-                
-                # Create smaller branches with organic variation
-                if depth < 4:  # Limit recursion depth
-                    num_branches = random.randint(2, 3)
-                    for _ in range(num_branches):
-                        # Branch starts somewhere along the main branch
-                        t = random.uniform(0.3, 0.7)
-                        branch_start_x = start_x + t * (end_x - start_x)
-                        branch_start_y = start_y + t * (end_y - start_y)
-                        
-                        # Randomize branch angles for organic look
-                        angle_offset = random.uniform(math.pi/6, math.pi/3) * (1 if random.random() > 0.5 else -1)
-                        new_angle = angle + angle_offset
-                        
-                        # Decrease length and width for each level
-                        new_length = length * random.uniform(0.5, 0.7)
-                        new_width = max(1, width * 0.7)
-                        
-                        # Recursively create sub-branches
-                        branches.extend(create_fractal_branch(
-                            branch_start_x, branch_start_y,
-                            new_length, new_angle,
-                            depth + 1, new_width
-                        ))
-                
-                return branches
-                
-            except Exception as e:
-                logging.error(f"Error creating fractal branch: {e}")
-                return []
-
-        try:
-            # Start the main crack
-            start_x = random.randint(0, canvas_width)
-            start_y = random.randint(0, canvas_height)
-            angle = random.uniform(0, 2 * math.pi)
-            
-            # Create the entire fractal pattern
-            all_branches = create_fractal_branch(
-                start_x, start_y,
-                crack_length,
-                angle,
-                0,  # Initial depth
-                random.uniform(2, 4)  # Initial width
-            )
-            
-            return all_branches
-            
-        except Exception as e:
-            logging.error(f"Error drawing crack effect: {e}")
-            return None
-
-    def redraw_saved_cracks(self):
-        """Redraws all saved cracks after resize or other canvas changes"""
-        if not self.game_over:
-            return
-        if not hasattr(self, 'saved_cracks') or not self.saved_cracks or not self.winfo_exists():
-            return
-            
-        try:
-            # Delete all existing cracks from symbol_canvas only
-            self.symbol_canvas.delete("crack")
-            
-            # Redraw each saved crack
-            for crack_group in self.saved_cracks:
-                if isinstance(crack_group, list):
-                    for crack in crack_group:
-                        try:
-                            # Always redraw cracks only on symbol_canvas
-                            crack['id'] = self.symbol_canvas.create_line(
-                                crack['coords'][0], crack['coords'][1],
-                                crack['coords'][2], crack['coords'][3],
-                                fill=crack['color'],
-                                width=crack['width'],
-                                tags="crack"
-                            )
-                        except (tk.TclError, Exception) as e:
-                            logging.warning(f"Error redrawing crack: {e}")
-        except Exception as e:
-            logging.error(f"Error in redraw_saved_cracks: {e}")
-
-    def draw_shatter_effect(self):
-        """Creates multiple cracks for game over effect"""
-        if not self.winfo_exists(): return
-        # Create multiple cracks with lengths measured by minus count
-        for _ in range(15):
-            crack_info = self.draw_crack_effect()
-            if crack_info and hasattr(self, 'saved_cracks'):
-                self.saved_cracks.append(crack_info)
-        logging.info("Shatter effect displayed with proper crack visuals.")
+    # The draw_shatter_effect method has been moved to the ErrorAnimation class
 
     def trigger_game_over(self):
         """Handle game over state"""
@@ -1525,8 +1401,9 @@ class GameplayScreen(tk.Toplevel):
         if hasattr(self, 'animation_after_id'):
             self.after_cancel(self.animation_after_id)
         
-        # Draw shatter effect
-        self.draw_shatter_effect()
+        # Draw shatter effect using the error animation
+        if self.error_animation:
+            self.error_animation.draw_shatter_effect()
         
         # Show all remaining characters in red
         self.after(1000, self.reveal_all_remaining_red)
@@ -1737,8 +1614,11 @@ class GameplayScreen(tk.Toplevel):
         if not self.game_over:
             logging.info("Game not over; skipping crack refresh.")
             return
+            
+        # Only redraw cracks if game is over
         self.clear_all_cracks()
-        self.draw_shatter_effect()
+        if self.error_animation and self.game_over:
+            self.error_animation.draw_shatter_effect()
 
     def get_hex_with_alpha(self, hex_color, alpha):
         """Convert a hex color and alpha value to a background-blended hex color"""
@@ -1830,7 +1710,7 @@ class GameplayScreen(tk.Toplevel):
             self.current_solution_steps = [str(step) for step in state['current_solution_steps']]
             self.visible_chars = set((int(x), int(y)) for x, y in state['visible_chars'])
             self.incorrect_clicks = int(state['incorrect_clicks'])
-            self.saved_cracks = []  # Reset cracks as they'll be regenerated if needed
+            # Cracks are managed by the error_animation class now
             
             if self.incorrect_clicks < self.max_incorrect_clicks:
                 self.clear_all_cracks()
@@ -1868,7 +1748,8 @@ class GameplayScreen(tk.Toplevel):
             self.solution_canvas.delete("crack")
         if hasattr(self, 'symbol_canvas'):
             self.symbol_canvas.delete("crack")
-        self.saved_cracks = []
+        if hasattr(self, 'error_animation') and self.error_animation:
+            self.error_animation.clear_all_cracks()
 
     def destroy(self):
         """Override destroy to ensure cracks are cleared and timers are cancelled on close"""
