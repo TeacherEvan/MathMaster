@@ -59,9 +59,8 @@ class WelcomeScreen(tk.Tk):
         self.start_time = time.time()
         self.timeout = 8  # seconds before auto-continue
         
-        # Create canvas for drawing
-        self.canvas = tk.Canvas(self, highlightthickness=0, bg="#000000")
-        self.canvas.pack(fill=tk.BOTH, expand=True)
+        # Create the main layout
+        self.create_layout()
         
         # Initialize visual components
         self.brain_animation = BrainAnimation(self.canvas)
@@ -78,6 +77,14 @@ class WelcomeScreen(tk.Tk):
         
         # Bind escape key to exit
         self.bind("<Escape>", self.exit_game)
+    
+    def create_layout(self):
+        """Creates the layout for the welcome screen"""
+        # Create canvas for drawing
+        self.canvas = tk.Canvas(self, highlightthickness=0, bg="#000000")
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+        
+        # We don't need frame_a or any problem text on the welcome screen
     
     def on_resize(self, event):
         """Handle window resize"""

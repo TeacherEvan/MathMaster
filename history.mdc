@@ -168,6 +168,53 @@ DO NOT CHANGE THIS DISPLAY NAME. THE INTERNAL LEVEL NAME CAN BE "Division" (or s
 
 # MathMaster Update Log
 
+## 2023-06-11: Enhanced Piston Animation and Fixed Visual Issues
+- Improved the piston animation for a more dramatic mechanical feel:
+  - Pistons now shoot out almost twice as far as before
+  - Increased piston size slightly for better visibility
+  - Added dynamic arm thickness that increases during extension
+  - Pistons highlight earlier in the animation sequence
+- Fixed issue where the top of the lock was being cut off during expansion:
+  - Added safe offset calculations to ensure all elements remain visible
+  - Implemented minimum position constraints to prevent elements from going off-canvas
+  - Lock body and all components now properly maintain their positions during expansion
+  - Animation smoothly accounts for canvas boundaries
+
+## 2023-06-10: Cell Separation Animation and Suggested Libraries
+- Added animation to break apart and separate lock cells when unlocked:
+  - Cells now expand with gaps between them, causing the lock to grow in length
+  - Lock now expands upwards instead of downwards, with top segments moving up
+  - All lock elements (shackle, keyhole, highlights) move up with the expansion
+  - Added a bouncy elastic effect for more visual interest
+  - Diagonal arms and pistons adjust dynamically to the new positions
+- Suggested libraries for easier animation scripting:
+  1. **pygame** - Great for 2D animations with better performance than tkinter
+  2. **pyglet** - OpenGL-based library with powerful animation capabilities
+  3. **Kivy** - Modern UI toolkit with animation framework and touch support
+  4. **custom_tkinter** - Enhanced tkinter with modern UI elements and improved animations
+  5. **pyside6** or **PyQt6** - Qt-based libraries with animation frameworks and professional-grade UI capabilities
+
+## 2023-06-09: Diagonal Arms with Piston Effect and Level-Specific Colors
+- Added diagonal connecting arms between lock segments that appear when a segment is unlocked
+- Implemented a piston release animation effect on the connecting arms:
+  - Arms feature a circular piston in the middle that bulges out when revealed
+  - Piston animates with an extend-and-retract motion for a mechanical feel
+- Added level-specific color themes for the lock segments:
+  - Easy level: Red segments that turn green when unlocked
+  - Medium level: Blue segments that turn yellow when unlocked
+  - Division level: Purple segments that turn turquoise when unlocked
+- Each level now has a unique visual identity through its lock colors
+
+## 2023-06-08: Taller Lock with Problem Completion Animation
+- Made the lock taller with extended body (30% taller) and higher shackle
+- Repositioned keyhole and lock segments to fit the taller proportions
+- Added a grand celebration animation when a problem is solved:
+  - Shackle opens upward with smooth animation
+  - Colored circles radiate outward from the center of the lock
+  - Golden stars float upward with rotation and fading effects
+  - Sparkles orbit around the lock with pulsating effects
+  - Animation displays for 2 seconds before showing level complete popup
+
 ## 2023-06-07: Enhanced Lock Animation
 - Increased lock canvas size from 120x120 to 180x180
 - Increased lock size from 100 to 150
@@ -181,3 +228,70 @@ DO NOT CHANGE THIS DISPLAY NAME. THE INTERNAL LEVEL NAME CAN BE "Division" (or s
   - Improved sparkle effects with larger, more numerous particles
   - Added special animation when all segments are unlocked
   - Implemented smooth fade-out for sparkle particles
+
+## 2024-07-28: Enhanced Particle Animation System with Character-Themed Particles
+- **Added Character-Themed Particle Effects:**
+  - Added a new system where orbiting particles now form recognizable letter and number shapes
+  - When a numerical or alphabetical character is revealed, particles briefly form its shape
+  - Implemented a smooth transition where particles morph between orbital rings and character shapes
+  - Character formations visually reinforce the math concepts being taught
+- **Technical Improvements:**
+  - Created new `_form_character_shape` method to generate particle coordinates for any alphanumeric character
+  - Added transition animations between particle states for smooth morphing effects 
+  - Implemented variable particle density based on character complexity
+  - Optimized performance with batch updates and throttled animation frames
+  - Added subtle "magnetic" effect where particles are attracted to their target positions
+- **Visual Enhancements:**
+  - Particles now display tracer effects when transitioning between formations
+  - Added small rotation to character formations for dynamic visual interest
+  - Improved particle color scheme to better match level themes
+  - Character formations pulse subtly to draw attention to newly revealed math steps
+  - Added "character complete" celebration effect when particles successfully form a shape
+
+## 2024-07-29: Dramatic Circular Particle Reactions for Row Completion
+- **Added Circular Wave Particle Patterns:**
+  - Implemented expanding circular waves of particles that appear when a row is completed
+  - Created waves with complementary colors to the unlocked segment for visual contrast
+  - Multiple waves launch with different timing for a sustained dramatic effect
+  - Particles feature oscillating radii for a dynamic wave-like appearance
+- **Enhanced Particle Reactions:**
+  - Particles now react more dramatically when rows are completed:
+    - Increased particle speed and intensity for more visual impact
+    - Added random direction reversals to create a chaotic celebration effect
+    - Created multiple explosion effects at different points along the completed row
+    - Implemented particle shaking with higher intensity for more dramatic feedback
+  - Added a white flash to segments before changing to their unlocked color
+- **Improved Visual Effects:**
+  - Particles now leave visible trails during animations for a more dynamic appearance
+  - Added glowing/pulsating effects to particles during wave animations
+  - Implemented smooth fade-in/out transitions for particles
+  - Enhanced particle size animations (grow/shrink) during wave propagation
+  - Added proper cleanup for all particle effects to prevent memory leaks
+
+## Fixed character tag mismatch in gameplay_screen.py
+
+The gameplay screen wasn't responding correctly to clicks because there was a mismatch between tag formats:
+- Characters were created with tags like `sol_{i}_{j}` in the `draw_solution_lines` method
+- But the `reveal_char` method was trying to update tags with format `char_{line_idx}_{char_idx}`
+
+Fixed by changing the tag format in `reveal_char` to match what's used in `draw_solution_lines`.
+
+Date: 2025-05-02
+
+## Implemented responsive lock animation sizing in Window A
+
+The lock animation in Window A was using fixed dimensions which caused it to overlap with other visual elements. The following changes were made to address this issue:
+
+- Removed fixed dimensions for the lock canvas and animation
+- Created a new `_update_lock_dimensions` method that calculates appropriate sizing based on:
+  - Available width of frame_a (80% of frame width)
+  - Available height after accounting for problem labels (90% of remaining space)
+  - Lock size set to 70% of the smallest dimension for proper proportions
+- Added calls to update dimensions during:
+  - Initial window setup
+  - Window resize events
+  - Frame configuration changes
+
+This ensures the lock animation properly adapts to any window size without overlapping other UI elements.
+
+Date: 2025-05-02

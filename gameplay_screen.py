@@ -410,7 +410,7 @@ class GameplayScreen(tk.Toplevel):
         # --- Game State Variables ---
         self.current_problem = ""
         self.current_solution_steps = []
-        self.visible_chars = [] # List of (line_idx, char_idx) tuples
+        self.visible_chars = set() # Set of (line_idx, char_idx) tuples for revealed chars
         self.falling_symbols_on_screen = [] # List of symbol objects/dictionaries
         self.incorrect_clicks = 0
         self.max_incorrect_clicks = 20
@@ -434,7 +434,7 @@ class GameplayScreen(tk.Toplevel):
         # Initialize problem variables to empty state (can be useful, though problem load follows)
         self.current_problem = ""
         self.current_solution_steps = []
-        self.visible_chars = [] 
+        self.visible_chars = set() 
 
         # Try to load saved state first, or load new problem for the session
         if not self.load_game_state():
@@ -474,7 +474,11 @@ class GameplayScreen(tk.Toplevel):
 
         # Ensure fullscreen once widgets are ready
         self.after(50, self.set_fullscreen)
+        
+        # Update lock dimensions after window setup is complete
+        self.after(300, self._update_lock_dimensions)
 
+        # Fix click event handling - ensure we have direct bindings to both canvases
         # Fix click event handling - ensure we have direct bindings to both canvases
         self.symbol_canvas.bind("<Button-1>", self.handle_canvas_c_click, add="+")
         self.solution_canvas.bind("<Button-1>", lambda e: None, add="+")  # Just to consume clicks
@@ -492,6 +496,9 @@ class GameplayScreen(tk.Toplevel):
             self.symbol_canvas.winfo_height()
         )
 
+        # Add a flash_ids dictionary to track animation timers for character flashing
+        self.flash_ids = {}
+
     def on_resize(self, event):
         """Handle window resize"""
         if event.widget == self: # Ensure the event is for the main Toplevel window
@@ -501,6 +508,10 @@ class GameplayScreen(tk.Toplevel):
     def _process_resize(self):
         """Actual resize processing logic"""
         self.redraw_game_elements()
+        
+        # Update lock dimensions when window is resized
+        self._update_lock_dimensions()
+        
         if hasattr(self, 'feedback_manager') and self.feedback_manager:
             if self.symbol_canvas.winfo_exists(): # Check if canvas exists
                 self.feedback_manager.update_dimensions(self.symbol_canvas.winfo_width(), self.symbol_canvas.winfo_height())
@@ -535,11 +546,10 @@ class GameplayScreen(tk.Toplevel):
         self.frame_a = tk.Frame(self, bg="#111111", bd=2, relief=tk.SUNKEN)
         self.frame_a.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
         self.frame_a.grid_columnconfigure(0, weight=1)
-        # Configure rows for problem prefix, equation, spacer, and lock animation at the bottom
+        # Configure rows for problem prefix, equation, and lock animation in center
         self.frame_a.grid_rowconfigure(0, weight=0)  # Problem Prefix Label
         self.frame_a.grid_rowconfigure(1, weight=0)  # Problem Equation Label
-        self.frame_a.grid_rowconfigure(2, weight=1)  # Expanding Spacer
-        self.frame_a.grid_rowconfigure(3, weight=0)  # Lock Animation Canvas
+        self.frame_a.grid_rowconfigure(2, weight=1)  # Lock Animation Canvas (centered)
 
         # Problem Prefix Label
         self.problem_prefix_label = tk.Label(
@@ -559,18 +569,24 @@ class GameplayScreen(tk.Toplevel):
         self.problem_equation_label.grid(row=1, column=0, padx=10, pady=(5,10), sticky="new") # sticky includes e,w
         self.frame_a.bind("<Configure>", lambda e: self.problem_equation_label.config(wraplength=e.width-20))
 
-        # Expanding Spacer (New, at row 2)
-        spacer_frame = tk.Frame(self.frame_a, bg="#111111") # Same bg as frame_a
-        spacer_frame.grid(row=2, column=0, sticky="nsew")
+        # No spacer needed as the lock canvas will take center position
 
-        # Lock Animation Canvas - Make it larger for better visual appeal
-        lock_canvas_width = 180  # Increased from 120 to 180
-        lock_canvas_height = 180  # Increased from 120 to 180
-        self.lock_canvas = tk.Canvas(self.frame_a, width=lock_canvas_width, height=lock_canvas_height, bg="#111111", highlightthickness=0)
-        self.lock_canvas.grid(row=3, column=0, pady=(10,15), sticky="s") # Increased padding for prominence
+        # Lock Animation Canvas - Using responsive sizing
+        self.lock_canvas = tk.Canvas(self.frame_a, bg="#111111", highlightthickness=0)
+        self.lock_canvas.grid(row=2, column=0, pady=(10,15), sticky="nsew") # Center position in row 2
         
-        lock_size = 150  # Increased from 100 to 150
-        self.lock_animation = LockAnimation(self.lock_canvas, x=lock_canvas_width/2, y=lock_canvas_height/2 + 10, size=lock_size) # Centered, y slightly adjusted for shackle
+        # Initial lock animation with placeholder values
+        # The actual size will be set properly in the _update_lock_dimensions method
+        self.lock_animation = LockAnimation(
+            self.lock_canvas, 
+            x=50, 
+            y=50, 
+            size=100,
+            level_name=self.current_level  # Pass the current level name
+        )
+        
+        # Bind the frame resize event to update lock dimensions
+        self.frame_a.bind("<Configure>", self._update_lock_dimensions)
 
         # --- Separator 1 ---
         sep1 = tk.Frame(self, width=2, bg="#00FF00")
@@ -610,6 +626,64 @@ class GameplayScreen(tk.Toplevel):
         
         # Initialize teleport manager after both canvases are created
         self.teleport_manager = SymbolTeleportManager(self.symbol_canvas, self.solution_canvas)
+
+    def _update_lock_dimensions(self, event=None):
+        """Update lock canvas and animation dimensions based on parent frame size"""
+        if not hasattr(self, 'frame_a') or not self.frame_a.winfo_exists():
+            return
+            
+        # Get the current dimensions of frame_a
+        frame_width = self.frame_a.winfo_width()
+        frame_height = self.frame_a.winfo_height()
+        
+        # Skip if dimensions aren't valid yet
+        if frame_width <= 1 or frame_height <= 1:
+            return
+            
+        # Calculate available space for lock (considering the problem labels in rows 0 and 1)
+        problem_prefix_height = self.problem_prefix_label.winfo_height()
+        problem_equation_height = self.problem_equation_label.winfo_height()
+        padding_height = 40  # Account for padding between elements
+        
+        available_height = frame_height - problem_prefix_height - problem_equation_height - padding_height
+        
+        # Calculate appropriate lock canvas dimensions (80% of available width, 90% of available height)
+        lock_canvas_width = int(frame_width * 0.8)
+        lock_canvas_height = int(available_height * 0.9)
+        
+        # Ensure minimum dimensions
+        lock_canvas_width = max(lock_canvas_width, 100)
+        lock_canvas_height = max(lock_canvas_height, 120)
+        
+        # Calculate appropriate lock size (70% of the smaller dimension)
+        lock_size = int(min(lock_canvas_width, lock_canvas_height) * 0.7)
+        
+        # Configure the canvas dimensions
+        self.lock_canvas.config(width=lock_canvas_width, height=lock_canvas_height)
+        
+        # If lock animation exists, recreate it with new dimensions
+        if hasattr(self, 'lock_animation') and self.lock_animation:
+            # Store current state if needed
+            unlocked_parts = self.lock_animation.unlocked_parts if hasattr(self.lock_animation, 'unlocked_parts') else 0
+            
+            # Clear existing animation
+            self.lock_animation.clear_visuals()
+            
+            # Create new animation with appropriate size
+            self.lock_animation = LockAnimation(
+                self.lock_canvas, 
+                x=lock_canvas_width/2, 
+                y=lock_canvas_height/2, 
+                size=lock_size,
+                level_name=self.current_level
+            )
+            
+            # Restore state if needed
+            for _ in range(unlocked_parts):
+                self.lock_animation.unlock_next_part()
+                
+        # Update the problem equation wraplength while we're here
+        self.problem_equation_label.config(wraplength=frame_width-20)
 
     def load_new_problem(self):
         """Loads a random problem for the selected level"""
@@ -687,7 +761,7 @@ class GameplayScreen(tk.Toplevel):
         logging.info(f"Loaded equation: {display_text}")
 
         # Reset game state for new problem
-        self.visible_chars = []
+        self.visible_chars = set()
         self.incorrect_clicks = 0
         self.game_over = False
         self.flash_ids = {}
@@ -1152,14 +1226,14 @@ class GameplayScreen(tk.Toplevel):
             logging.error(traceback.format_exc())
 
     def reveal_char(self, line_idx, char_idx):
-        """Reveals a character in the solution"""
-        if self.game_over:
-            logging.info(f"[reveal_char] Ignoring reveal_char call for ({line_idx}, {char_idx}) because game is over.")
-            return
-        
-        char_to_reveal_for_log = '' # Initialize for logging in case of early error
+        """Reveal a character in the solution steps"""
         try:
-            # Verify the indices are valid
+            # Skip if game is over
+            if self.game_over:
+                logging.info(f"[reveal_char] Ignoring reveal_char call for ({line_idx}, {char_idx}) because game is over.")
+                return
+        
+            # Skip if line_idx or char_idx out of bounds
             if line_idx < 0 or line_idx >= len(self.current_solution_steps):
                 logging.error(f"[reveal_char] Invalid line_idx {line_idx}, max is {len(self.current_solution_steps)-1}. current_solution_steps: {self.current_solution_steps}")
                 return
@@ -1169,89 +1243,124 @@ class GameplayScreen(tk.Toplevel):
                 logging.error(f"[reveal_char] Invalid char_idx {char_idx} for line {line_idx} ('{current_line}'), max is {len(current_line)-1}.")
                 return
             
-            char_to_reveal_for_log = current_line[char_idx]
+            char_to_reveal_for_log = current_line[char_idx] if char_idx < len(current_line) else ""
             logging.info(f"[reveal_char] Attempting to reveal char '{char_to_reveal_for_log}' (ord: {ord(char_to_reveal_for_log) if len(char_to_reveal_for_log)==1 else 'N/A'}) at ({line_idx}, {char_idx}).")
 
-            # Check if already revealed
+            # Skip if already visible
             if (line_idx, char_idx) in self.visible_chars:
                 logging.info(f"[reveal_char] Character '{char_to_reveal_for_log}' at ({line_idx}, {char_idx}) is ALREADY in self.visible_chars. Skipping reveal.")
                 return
                 
             # Add to visible chars
-            self.visible_chars.append((line_idx, char_idx))
+            self.visible_chars.add((line_idx, char_idx))
             
-            # Update display
+            # Reveal character in canvas
             char_tag = f"sol_{line_idx}_{char_idx}"
-            target_color = "#000000" # Black
-            logging.info(f"[reveal_char] Preparing to update canvas item with tag '{char_tag}' to color '{target_color}' for char '{char_to_reveal_for_log}'.")
+            target_color = "#336699"  # A blue color for revealed characters
+            
             try:
+                logging.info(f"[reveal_char] Preparing to update canvas item with tag '{char_tag}' to color '{target_color}' for char '{char_to_reveal_for_log}'.")
                 self.solution_canvas.itemconfig(char_tag, fill=target_color)
                 logging.info(f"[reveal_char] Successfully itemconfig-ed tag '{char_tag}' to '{target_color}'. Now flashing green.")
-                self.flash_char_green(char_tag)
                 
-                # Check for step completion to trigger lock animation
-                step_is_now_complete = all((line_idx, c_idx) in self.visible_chars for c_idx in range(len(current_line)))
+                # Flash the character green briefly
+                self.flash_char_green(char_tag, target_color)
                 
-                if step_is_now_complete and line_idx not in self.completed_line_indices_for_problem:
-                    self.completed_line_indices_for_problem.add(line_idx)
-                    num_distinct_completed_steps = len(self.completed_line_indices_for_problem)
-                    
-                    if self.lock_animation and self.lock_animation.unlocked_parts < self.lock_animation.total_parts:
-                        # We check num_distinct_completed_steps against unlocked_parts + 1 
-                        # because unlock_next_part will increment unlocked_parts. Or simply check
-                        # if the current count of distinct completed steps is high enough to warrant a new unlock.
-                        # Effectively, each new distinct completed step should try to unlock one part.
-                        self.lock_animation.unlock_next_part()
-                        logging.info(f"[LockAnimation] Unlocked part. Total distinct steps completed: {num_distinct_completed_steps}. Lock parts now visually unlocked: {self.lock_animation.unlocked_parts}")
-
-                # Debug output
-                if self.debug_mode:
-                    logging.info(f"[reveal_char] Successfully revealed character '{char_to_reveal_for_log}' (tag: {char_tag}) at position ({line_idx}, {char_idx}).")
-                    
-                    # Show current completion state after revealing
-                    total_chars_in_line = len(self.current_solution_steps[line_idx])
-                    visible_chars_in_line = sum(1 for i in range(total_chars_in_line) if (line_idx, i) in self.visible_chars)
-                    logging.info(f"[reveal_char] Step {line_idx} is now {visible_chars_in_line}/{total_chars_in_line} complete ({visible_chars_in_line/total_chars_in_line*100:.1f}%). Visible chars overall: {len(self.visible_chars)}")
-                    
-                    # Check if the step is complete
-                    if visible_chars_in_line == total_chars_in_line:
-                        logging.info(f"[reveal_char] Step {line_idx} ('{self.current_solution_steps[line_idx]}') is now COMPLETE!")
-                        # Check if there are more steps
-                        if line_idx < len(self.current_solution_steps) - 1:
-                            logging.info(f"[reveal_char] Next step will be {line_idx + 1}: '{self.current_solution_steps[line_idx+1] if (line_idx+1) < len(self.current_solution_steps) else 'N/A'}'")
-                
+                # Trigger character-themed particle formation for significant characters
+                if self.lock_animation and char_to_reveal_for_log in "0123456789+-=xX":
+                    self.lock_animation.react_to_character_reveal(char_to_reveal_for_log)
+            
             except tk.TclError as e:
                 logging.warning(f"[reveal_char] TclError during itemconfig/flash for char '{char_to_reveal_for_log}' tag '{char_tag}' ({line_idx}, {char_idx}): {e}")
-                # Attempt to remove from visible_chars if update failed critically, to allow retry?
-                # For now, just log. If it fails to update, it will appear not revealed but be in visible_chars.
+                
+            # Check if this step is now complete
+            self._check_if_step_complete(line_idx)
+                
+            # Update lock segment visuals if appropriate
+            self._check_for_lock_visual_update()
+            
+            logging.info(f"[reveal_char] Successfully revealed character '{char_to_reveal_for_log}' (tag: {char_tag}) at position ({line_idx}, {char_idx}).")
+                    
+            # Log completion percentage for this line
+            total_chars_in_line = len(current_line)
+            visible_chars_in_line = sum(1 for i in range(total_chars_in_line) if (line_idx, i) in self.visible_chars)
+            logging.info(f"[reveal_char] Step {line_idx} is now {visible_chars_in_line}/{total_chars_in_line} complete ({visible_chars_in_line/total_chars_in_line*100:.1f}%). Visible chars overall: {len(self.visible_chars)}")
+                    
+            # If this step is complete, log that and what the next step will be
+            if visible_chars_in_line == total_chars_in_line:
+                logging.info(f"[reveal_char] Step {line_idx} ('{self.current_solution_steps[line_idx]}') is now COMPLETE!")
+                
+                if line_idx + 1 < len(self.current_solution_steps):
+                    logging.info(f"[reveal_char] Next step will be {line_idx + 1}: '{self.current_solution_steps[line_idx+1] if (line_idx+1) < len(self.current_solution_steps) else 'N/A'}'")
                 
         except Exception as e:
             logging.error(f"[reveal_char] Critical error in reveal_char for ({line_idx}, {char_idx}): {e}")
-            import traceback
-            logging.error(traceback.format_exc())
+            traceback.print_exc()
 
-    def flash_char_green(self, tag):
-        """Makes a character flash bright green when correctly revealed"""
-        if not self.winfo_exists(): return
+    def _check_if_step_complete(self, line_idx):
+        """Check if a solution step is now complete and handle lock animation update if needed"""
         try:
-            original_color = "#000000"  # Black (normal visible color)
-            flash_color = "#00FF00"     # Bright green as per blueprint
-            logging.info(f"[flash_char_green] Flashing tag '{tag}'. Current color will be set to '{flash_color}'. Will revert to '{original_color}'.")
+            current_line = self.current_solution_steps[line_idx]
+            step_is_now_complete = all((line_idx, char_idx) in self.visible_chars for char_idx in range(len(current_line)))
+            
+            # If step is complete and we haven't processed it yet
+            if step_is_now_complete and line_idx not in self.completed_line_indices_for_problem:
+                self.completed_line_indices_for_problem.add(line_idx)
+                
+                # Debug output
+                if self.debug_mode:
+                    num_distinct_completed_steps = len(self.completed_line_indices_for_problem)
+                    logging.debug(f"Step {line_idx} is now complete. Total completed steps: {num_distinct_completed_steps}")
+        except Exception as e:
+            logging.error(f"Error checking step completion: {e}")
+            
+    def _check_for_lock_visual_update(self):
+        """Check if we should update the lock animation based on completed steps"""
+        try:
+            if not self.lock_animation:
+                return
+                
+            num_distinct_completed_steps = len(self.completed_line_indices_for_problem)
+            
+            # If we have completed more steps than parts unlocked, unlock the next part
+            if self.lock_animation.unlocked_parts < self.lock_animation.total_parts and \
+               num_distinct_completed_steps > self.lock_animation.unlocked_parts:
+                
+                self.lock_animation.unlock_next_part()
+                logging.info(f"[LockAnimation] Unlocked part. Total distinct steps completed: {num_distinct_completed_steps}. Lock parts now visually unlocked: {self.lock_animation.unlocked_parts}")
+        except Exception as e:
+            logging.error(f"Error updating lock visuals: {e}")
+            
+    def flash_char_green(self, tag, original_color):
+        """Makes a character flash bright green when correctly revealed"""
+        if not self.winfo_exists(): 
+            return
+            
+        try:
+            # Flash the character green
+            flash_color = "#22DD22"
+            logging.info(f"Flashing tag {tag} to {flash_color}, will return to {original_color}")
 
-            # Cancel previous flash for this tag if any
-            if tag in self.flash_ids:
-                self.after_cancel(self.flash_ids[tag])
-                logging.info(f"[flash_char_green] Cancelled existing flash timer for tag '{tag}'.")
-
-            # Change to bright green
+            # Create a unique ID for this flash to avoid conflicts with after_cancel
+            flash_id = f"flash_{tag}_{time.time()}"
+            self.flash_ids[flash_id] = True
+            
             self.solution_canvas.itemconfig(tag, fill=flash_color)
-            logging.info(f"[flash_char_green] Set tag '{tag}' to '{flash_color}'.")
-
-            # Schedule return to original color
-            flash_duration = 150 # milliseconds
-            self.flash_ids[tag] = self.after(flash_duration, lambda: self.reset_char_color(tag, original_color))
-        except tk.TclError as e:
-            logging.warning(f"[flash_char_green] TclError for tag '{tag}': {e}. Window likely closed.")
+            
+            # Schedule reset back to black after 300ms
+            def reset_color():
+                if self.winfo_exists() and flash_id in self.flash_ids:
+                    try:
+                        self.solution_canvas.itemconfig(tag, fill=original_color)
+                        del self.flash_ids[flash_id]
+                    except tk.TclError:
+                        pass  # Item might be gone
+                        
+            self.after(300, reset_color)
+            
+        except tk.TclError:
+            # Item might be gone already
+            pass
 
     def reset_char_color(self, tag, color):
         """Resets character color after flashing"""
@@ -1438,7 +1547,7 @@ class GameplayScreen(tk.Toplevel):
                     except tk.TclError:
                          logging.warning("TclError during reveal_all_remaining_red, likely window closed.")
                          return # Stop if canvas is gone
-        self.visible_chars = [] # Clear visible list as game is over
+        self.visible_chars = set() # Clear visible list as game is over
 
     def show_level_failed_popup(self):
         """Displays the 'Level Failed' pop-up window"""
@@ -1495,7 +1604,7 @@ class GameplayScreen(tk.Toplevel):
             self.load_new_problem()
             self.game_over = False
             # Reset game state
-            self.visible_chars = []
+            self.visible_chars = set()
             self.incorrect_clicks = 0
             self.falling_symbols_on_screen = []
             # Restart animation
@@ -1512,7 +1621,7 @@ class GameplayScreen(tk.Toplevel):
             self.load_new_problem()
             self.game_over = False
             # Reset game state
-            self.visible_chars = []
+            self.visible_chars = set()
             self.incorrect_clicks = 0
             self.falling_symbols_on_screen = []
             # Restart animation
@@ -1551,7 +1660,13 @@ class GameplayScreen(tk.Toplevel):
             self.animation_after_id = None
             logging.info("check_level_complete: Cancelled animation for level complete.")
 
-        self.after(500, self.show_level_complete_popup)
+        # Trigger the lock celebration animation
+        if self.lock_animation:
+            logging.info("check_level_complete: Triggering lock celebration animation.")
+            self.lock_animation.celebrate_problem_solved()
+            
+        # Show success popup after the animation has time to display
+        self.after(2000, self.show_level_complete_popup)
         return True
 
     def level_complete(self):
@@ -1713,7 +1828,7 @@ class GameplayScreen(tk.Toplevel):
             self.current_level = str(state['level'])
             self.current_problem = str(state['current_problem'])
             self.current_solution_steps = [str(step) for step in state['current_solution_steps']]
-            self.visible_chars = [(int(x), int(y)) for x, y in state['visible_chars']]
+            self.visible_chars = set((int(x), int(y)) for x, y in state['visible_chars'])
             self.incorrect_clicks = int(state['incorrect_clicks'])
             self.saved_cracks = []  # Reset cracks as they'll be regenerated if needed
             

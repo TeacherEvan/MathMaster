@@ -4,6 +4,7 @@ from .math_symbols import MathSymbols
 from .progress_bar import ProgressBar
 from .title_display import TitleDisplay
 from .color_utils import ColorUtils
+from .lock_animation import LockAnimation
 
 __all__ = [
     'BrainAnimation',
@@ -11,5 +12,6 @@ __all__ = [
     'MathSymbols',
     'ProgressBar',
     'TitleDisplay',
-    'ColorUtils'
+    'ColorUtils',
+    'LockAnimation'
 ] 
