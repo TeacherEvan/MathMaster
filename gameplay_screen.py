@@ -9,6 +9,7 @@ import os
 from src.ui_components.feedback_manager import FeedbackManager # Added import
 from lock_animation import LockAnimation # Import the lock animation class
 from error_animation import ErrorAnimation # Import the new error animation class
+from falling_symbols import FallingSymbols # Import the falling symbols manager
 
 # Import the problem sets from the module files
 try:
@@ -364,8 +365,7 @@ def generate_solution_steps(problem_input): # Renamed to avoid confusion
 # Updated from placeholder to dynamic generation
 SOLUTIONS = {}
 
-# Falling symbols list, now properly formatted for the different problem types
-FALLING_SYMBOLS = list("0123456789Xx +-=÷×*/()")  # Use proper symbols including space, X, x, and parentheses
+# Falling symbols list moved to FallingSymbols class
 
 class GameplayScreen(tk.Toplevel):
     def __init__(self, parent, level):
@@ -411,7 +411,6 @@ class GameplayScreen(tk.Toplevel):
         self.current_problem = ""
         self.current_solution_steps = []
         self.visible_chars = set() # Set of (line_idx, char_idx) tuples for revealed chars
-        self.falling_symbols_on_screen = [] # List of symbol objects/dictionaries
         self.incorrect_clicks = 0
         self.max_incorrect_clicks = 20
         self.game_over = False
@@ -421,6 +420,7 @@ class GameplayScreen(tk.Toplevel):
         self.completed_line_indices_for_problem = set() # For lock animation logic
         self.lock_animation = None # Placeholder for LockAnimation instance
         self.error_animation = None # Placeholder for ErrorAnimation instance
+        self.falling_symbols = None # Placeholder for FallingSymbols instance
         
         # Debug mode to print character details
         self.debug_mode = True
@@ -454,8 +454,11 @@ class GameplayScreen(tk.Toplevel):
             self.print_solution_details()
 
         # --- Start Animation ---
+        # Initialize falling symbols
+        self.falling_symbols = FallingSymbols(self.symbol_canvas, list("0123456789Xx +-=÷×*/()"))
+        
         # Delay starting animation slightly to allow canvas to initialize
-        self.after(100, self.animate_falling_symbols)
+        self.after(100, self.falling_symbols.start_animation)
 
         # Force fullscreen after initialization
         self.after(200, self._ensure_fullscreen)
@@ -700,7 +703,11 @@ class GameplayScreen(tk.Toplevel):
             return
 
         self.clear_all_cracks()  # Clear any existing cracks
-        self.falling_symbols_on_screen = []
+        
+        # Clear falling symbols
+        if self.falling_symbols:
+            self.falling_symbols.clear_symbols()
+            
         self.completed_line_indices_for_problem.clear() # Reset for new problem
         if self.lock_animation:
             self.lock_animation.reset()
@@ -881,102 +888,6 @@ class GameplayScreen(tk.Toplevel):
             import traceback
             logging.error(traceback.format_exc())
 
-    def animate_falling_symbols(self):
-        """Manages the animation loop for falling symbols"""
-        if self.game_over or not self.winfo_exists(): 
-            if hasattr(self, 'animation_after_id') and self.animation_after_id:
-                self.after_cancel(self.animation_after_id)
-                self.animation_after_id = None
-            return
-
-        try:
-            self.update_falling_symbols()
-            self.draw_falling_symbols()
-            if hasattr(self, 'animation_after_id') and self.animation_after_id: # Clear previous before setting new
-                self.after_cancel(self.animation_after_id)
-            self.animation_after_id = self.after(50, self.animate_falling_symbols) # Adjust speed (milliseconds)
-        except Exception as e:
-            if hasattr(self, 'animation_after_id') and self.animation_after_id:
-                self.after_cancel(self.animation_after_id)
-                self.animation_after_id = None
-            if self.winfo_exists():
-                logging.error(f"Falling symbol animation error: {e}")
-                print(f"Falling symbol animation error: {e}")
-
-    def update_falling_symbols(self):
-        """Updates positions and generates new symbols"""
-        if not self.winfo_exists(): return # Check if window exists
-
-        canvas_height = self.symbol_canvas.winfo_height()
-        canvas_width = self.symbol_canvas.winfo_width()
-
-        if canvas_height <= 1 or canvas_width <= 1: return # Canvas not ready
-
-        # Exactly 7 seconds to fall from top to bottom as per blueprint
-        fall_speed = canvas_height / (7 * 20) # Pixels per 50ms interval for 7 sec fall
-
-        # Move existing symbols
-        next_symbols = []
-        for symbol_info in self.falling_symbols_on_screen:
-            symbol_info['y'] += fall_speed
-            if symbol_info['y'] < canvas_height + symbol_info['size']: # Keep if still visible
-                next_symbols.append(symbol_info)
-            else:
-                # Symbol reached bottom, delete its canvas item if it exists
-                try:
-                    if symbol_info.get('id'):
-                        self.symbol_canvas.delete(symbol_info['id'])
-                except tk.TclError: # Handle case where item might already be deleted
-                    pass
-        self.falling_symbols_on_screen = next_symbols
-
-        # Add new symbols with 60% chance (increased from 15%)
-        if random.random() < 0.60:
-            char = random.choice(FALLING_SYMBOLS)
-            x_pos = random.randint(20, canvas_width - 20)
-            
-            # Check if new symbol overlaps with existing ones spawned near the top (to avoid excessive overlap)
-            spawn_margin = 30  # minimum horizontal gap
-            can_spawn = True
-            for symbol_info in self.falling_symbols_on_screen:
-                if symbol_info['y'] < 50:  # Only check symbols near the top
-                    if abs(symbol_info['x'] - x_pos) < spawn_margin:
-                        can_spawn = False
-                        break
-            if can_spawn:
-                new_symbol = {
-                    'char': char,
-                    'x': x_pos,
-                    'y': 0,
-                    'id': None,  # Canvas item ID
-                    'size': 44  # Doubled size from 22 to 44
-                }
-                self.falling_symbols_on_screen.append(new_symbol)
-
-    def draw_falling_symbols(self):
-        """Draw all falling symbols on the canvas"""
-        if not self.winfo_exists(): return # Check if window exists
-        
-        try:
-            # Clear all existing symbols
-            self.symbol_canvas.delete("falling_symbol")
-            
-            # Draw each symbol
-            for symbol_info in self.falling_symbols_on_screen:
-                # Create text with larger font size
-                symbol_id = self.symbol_canvas.create_text(
-                    symbol_info['x'],
-                    symbol_info['y'],
-                    text=symbol_info['char'],
-                    font=("Courier New", 44, "bold"),  # Doubled from 22 to 44
-                    fill="#00FF00",
-                    tags="falling_symbol"
-                )
-                symbol_info['id'] = symbol_id
-        except tk.TclError:
-            # Handle case where canvas is destroyed
-            pass
-
     def print_solution_details(self):
         """Print detailed info about the solution steps for debugging"""
         logging.info("=== DEBUG: Solution Steps Details ===")
@@ -1074,7 +985,7 @@ class GameplayScreen(tk.Toplevel):
 
     def handle_canvas_c_click(self, event):
         """Handles clicks specifically on the symbol canvas (Window C)"""
-        if self.game_over or not self.winfo_exists(): 
+        if self.game_over or not self.winfo_exists() or not self.falling_symbols: 
             return
 
         # Log raw click coordinates for debugging
@@ -1087,67 +998,18 @@ class GameplayScreen(tk.Toplevel):
         click_y = canvas.canvasy(event.y)
         click_pos = (click_x, click_y)
 
-        # Use a larger hit area for better detection
-        hit_radius = 10  # Increased from 5
-        clicked_items = canvas.find_overlapping(
-            click_x-hit_radius, click_y-hit_radius,
-            click_x+hit_radius, click_y+hit_radius
-        )
+        # Get the clicked symbol using the falling_symbols manager
+        clicked_symbol_info, symbol_index = self.falling_symbols.get_symbol_at_position(click_x, click_y)
         
-        if not clicked_items:
-            if self.debug_mode:
-                logging.info(f"No items found at click position {click_pos}")
-            return
-
-        # Get the closest item to the click point
-        closest_item = None
-        closest_distance = float('inf')
-        
-        for item_id in clicked_items:
-            # Get item bounds
-            try:
-                bbox = canvas.bbox(item_id)
-                if not bbox:
-                    continue
-                    
-                # Calculate center of the item
-                item_center_x = (bbox[0] + bbox[2]) / 2
-                item_center_y = (bbox[1] + bbox[3]) / 2
-                
-                # Calculate distance to click
-                distance = math.sqrt((click_x - item_center_x)**2 + (click_y - item_center_y)**2)
-                
-                if distance < closest_distance:
-                    closest_distance = distance
-                    closest_item = item_id
-            except Exception as e:
-                logging.error(f"Error during item bounds calculation: {e}")
-                continue
-        
-        if not closest_item:
-            if self.debug_mode:
-                logging.info("Could not determine closest item to click")
-            return
-
-        # Find the symbol info for this item
-        clicked_symbol_info = None
-        symbol_index = -1
-        
-        for i, symbol_info in enumerate(self.falling_symbols_on_screen):
-            if symbol_info.get('id') == closest_item:
-                clicked_symbol_info = symbol_info
-                symbol_index = i
-                break
-
         if not clicked_symbol_info:
             if self.debug_mode:
-                logging.info(f"Item {closest_item} is not in falling_symbols_on_screen")
+                logging.info(f"No symbols found at click position {click_pos}")
             return
 
         clicked_char = clicked_symbol_info['char']
         if self.debug_mode:
             logging.info(f"User clicked symbol: '{clicked_char}' at position {click_pos}")
-            logging.info(f"Symbol has ID: {closest_item}")
+            logging.info(f"Symbol has ID: {clicked_symbol_info.get('id')}")
 
         try:
             # Get all possible character positions that could be clicked
@@ -1190,7 +1052,7 @@ class GameplayScreen(tk.Toplevel):
                     
                     # Use precise coordinates for teleportation
                     self.teleport_manager.teleport_symbol(
-                        closest_item,
+                        clicked_symbol_info.get('id'),
                         start_pos=click_pos,
                         end_pos=target_coords,
                         is_correct=True
@@ -1198,7 +1060,7 @@ class GameplayScreen(tk.Toplevel):
                     
                     # Remove the symbol from tracking
                     if symbol_index != -1:
-                        del self.falling_symbols_on_screen[symbol_index]
+                        self.falling_symbols.remove_symbol(symbol_index)
     
                     # Check for level completion
                     self.check_level_complete() # Check first, then auto-reveal
@@ -1211,7 +1073,7 @@ class GameplayScreen(tk.Toplevel):
                     logging.info(f"No match found for clicked symbol '{clicked_char}'")
                     
                 self.teleport_manager.teleport_symbol(
-                    closest_item,
+                    clicked_symbol_info.get('id'),
                     start_pos=click_pos,
                     end_pos=click_pos,  # Stay in place for incorrect
                     is_correct=False
@@ -1478,9 +1340,10 @@ class GameplayScreen(tk.Toplevel):
             # Reset game state
             self.visible_chars = set()
             self.incorrect_clicks = 0
-            self.falling_symbols_on_screen = []
+            self.falling_symbols = None
             # Restart animation
-            self.animate_falling_symbols()
+            self.falling_symbols = FallingSymbols(self.symbol_canvas, list("0123456789Xx +-=÷×*/()"))
+            self.after(100, self.falling_symbols.start_animation)
         elif choice == "level_select":
             # Return to level select screen
             self.parent.deiconify()  # Show the parent (level select) window
@@ -1495,73 +1358,61 @@ class GameplayScreen(tk.Toplevel):
             # Reset game state
             self.visible_chars = set()
             self.incorrect_clicks = 0
-            self.falling_symbols_on_screen = []
+            self.falling_symbols = None
             # Restart animation
-            self.animate_falling_symbols()
+            self.falling_symbols = FallingSymbols(self.symbol_canvas, list("0123456789Xx +-=÷×*/()"))
+            self.after(100, self.falling_symbols.start_animation)
             logging.info("Starting next problem")
 
     def check_level_complete(self):
-        """Check if all characters in all solution steps are complete."""
+        """Check if all solution steps are completed"""
         if self.game_over:
-            return False # Already decided
+            return
 
-        if not self.current_solution_steps or not any(self.current_solution_steps):
-            logging.info("check_level_complete: No solution steps available.")
-            return False # Cannot be complete if there are no steps
-
-        for i, line in enumerate(self.current_solution_steps):
-            if not line: # Skip if a step/line is empty for some reason
-                if self.debug_mode:
-                    logging.info(f"check_level_complete: Step {i} is empty, skipping.")
-                continue
-            for j, char_in_step in enumerate(line):
-                # Every character, including spaces, must be in visible_chars
-                if (i, j) not in self.visible_chars:
-                    if self.debug_mode:
-                        logging.info(f"check_level_complete: Level not complete. Char ({i},{j}) '''{char_in_step}''' is not visible.")
-                    return False # Found an unrevealed character
-        
-        # If we went through all characters in all steps and all are visible
-        logging.info("check_level_complete: All solution steps completed! Level complete.")
-        self.game_over = True # Set game_over here to prevent repeated popups
-        self.clear_saved_game()
-        
-        # Stop animation before showing popup
-        if hasattr(self, 'animation_after_id') and self.animation_after_id:
-            self.after_cancel(self.animation_after_id)
-            self.animation_after_id = None
-            logging.info("check_level_complete: Cancelled animation for level complete.")
-
-        # Trigger the lock celebration animation with completion callback
-        if self.lock_animation:
-            logging.info("check_level_complete: Triggering lock celebration animation.")
+        # Count visible characters in each line
+        all_lines_complete = True
+        for line_idx, line in enumerate(self.current_solution_steps):
+            line_complete = all((line_idx, char_idx) in self.visible_chars 
+                               for char_idx in range(len(line)))
             
-            # Create a callback function to show the popup after animation
-            def show_popup_after_animation():
-                logging.info("Lock animation complete, showing level complete popup")
-                self.show_level_complete_popup()
-            
-            # Start celebration and schedule popup display
-            self.lock_animation.celebrate_problem_solved()
-            
-            # Schedule popup after animation (use a callback if supported by lock_animation)
-            # For now, we use a timer but we can modify lock_animation to use callbacks later
-            self.after(2200, show_popup_after_animation)
-        return True
+            if not line_complete:
+                all_lines_complete = False
+                break
+                
+        if all_lines_complete:
+            logging.info("All steps completed! Level complete.")
+            self.level_complete()
+            return True
+        return False
 
     def level_complete(self):
         """Handle level completion"""
-        if self.game_over:
-            return
-            
         self.game_over = True
-        logging.info("Level completed successfully!")
         
-        # Clear save when level is complete
-        self.clear_saved_game()
+        logging.info("Level complete! Stopping animations and celebrating.")
         
-        # Show level complete popup after a brief delay
-        self.after(500, self.show_level_complete_popup)
+        # Stop falling symbols animation
+        if self.falling_symbols:
+            self.falling_symbols.stop_animation()
+            
+        # Clear any existing symbols for a clean visual
+        if self.falling_symbols:
+            self.falling_symbols.clear_symbols()
+        
+        # Play lock victory animation
+        if self.lock_animation:
+            self.lock_animation.celebrate_problem_solved()
+        
+        # Remove any cracks from the error animation
+        if self.error_animation:
+            self.error_animation.clear_all_cracks()
+        
+        # Schedule popup after animations complete
+        def show_popup_after_animation():
+            self.show_level_complete_popup()
+        
+        # Delay popup to let animations finish
+        self.after(2000, show_popup_after_animation)
 
     def show_level_complete_popup(self):
         """Displays the enhanced 'Level Complete' pop-up window"""
@@ -1744,39 +1595,55 @@ class GameplayScreen(tk.Toplevel):
             self.error_animation.clear_all_cracks()
 
     def destroy(self):
-        """Override destroy to ensure cracks are cleared and timers are cancelled on close"""
-        logging.info("GameplayScreen destroy called. Cleaning up...")
-        # Cancel falling symbols animation timer
+        """Clean up resources before destroying the window"""
+        logging.info("Cleaning up gameplay screen resources before destruction")
+        
+        # Cancel any animation timers first
         if hasattr(self, 'animation_after_id') and self.animation_after_id:
             self.after_cancel(self.animation_after_id)
             self.animation_after_id = None
-            logging.info("Cancelled animation_after_id.")
-
+            
+        # Cancel falling symbols animation timer
+        if self.falling_symbols:
+            self.falling_symbols.stop_animation()
+            
         # Cancel auto-save timer
         if hasattr(self, 'auto_save_after_id') and self.auto_save_after_id:
             self.after_cancel(self.auto_save_after_id)
             self.auto_save_after_id = None
-            logging.info("Cancelled auto_save_after_id.")
-
-        # Cancel any pending character flash timers
-        if hasattr(self, 'flash_ids') and self.flash_ids:
-            for tag_id in list(self.flash_ids.keys()): # Iterate over a copy of keys
-                if self.flash_ids[tag_id]:
-                    self.after_cancel(self.flash_ids[tag_id])
-                    logging.info(f"Cancelled flash_id for tag: {tag_id}")
-            self.flash_ids = {}
-
-        # Clear cracks from canvases
-        self.clear_all_cracks()
-        logging.info("Cleared all cracks.")
+            
+        # Cancel any flash timers
+        for tag, timer_id in self.flash_ids.items():
+            self.after_cancel(timer_id)
+        self.flash_ids.clear()
         
-        # Clear lock animation visuals if they exist
-        if self.lock_animation:
-            self.lock_animation.clear_visuals()
-            self.lock_animation = None # Dereference
-
-        super().destroy() # Call parent's destroy method
-        logging.info("GameplayScreen super().destroy() completed.")
+        # Save game state before closing
+        if not self.game_over:  # Only save if not game-over (no point saving a completed/failed level)
+            self.save_game_state()
+            
+        # Clear visual elements
+        try:
+            if hasattr(self, 'lock_animation') and self.lock_animation:
+                self.lock_animation.clear_visuals()
+                
+            if hasattr(self, 'error_animation') and self.error_animation:
+                self.error_animation.clear_all_cracks()
+                
+            if hasattr(self, 'feedback_manager') and self.feedback_manager:
+                self.feedback_manager.clear_feedback()
+        except Exception as e:
+            logging.error(f"Error during visual cleanup: {e}")
+            
+        # Remove reference to teleport manager if it exists
+        if hasattr(self, 'teleport_manager'):
+            # The teleport_manager might not have a clear_particles method
+            # Just remove the reference
+            self.teleport_manager = None
+            
+        # Call parent class's destroy method
+        logging.info("Calling tk.Toplevel.destroy()")
+        super().destroy()
+        logging.info("Gameplay screen destroyed.")
 
     def _ensure_fullscreen(self):
         """Ensure window is displayed in fullscreen mode"""

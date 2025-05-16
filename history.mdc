@@ -144,9 +144,9 @@ DO NOT CHANGE THIS DISPLAY NAME. THE INTERNAL LEVEL NAME CAN BE "Division" (or s
 ## 2023-12-18
 
 - **Fixed Display of Parentheses in Solution Steps (`gameplay_screen.py`):**
-    - Added `(` and `)` characters to the `FALLING_SYMBOLS` list.
-    - This addresses an issue where solution steps containing parentheses (e.g., in the parsed steps for `a+b+c=X` type problems) could not be fully revealed because parentheses symbols were not available to be clicked in Window C.
-    - With this change, parentheses will now appear as falling symbols and can be selected, allowing for the correct and complete display of all solution steps in Window B.
+    *   Added `(` and `)` characters to the `FALLING_SYMBOLS` list.
+    *   This addresses an issue where solution steps containing parentheses (e.g., in the parsed steps for `a+b+c=X` type problems) could not be fully revealed because parentheses symbols were not available to be clicked in Window C.
+    *   With this change, parentheses will now appear as falling symbols and can be selected, allowing for the correct and complete display of all solution steps in Window B.
 
 ## 2023-12-19
 
@@ -253,6 +253,24 @@ DO NOT CHANGE THIS DISPLAY NAME. THE INTERNAL LEVEL NAME CAN BE "Division" (or s
   - Implemented expanding circular waves of particles that appear when a row is completed
   - Created waves with complementary colors to the unlocked segment for visual contrast
   - Multiple waves launch with different timing for a sustained dramatic effect
+
+## 2024-08-05: Modular Code Refactoring - Separated Falling Symbols
+- **Extracted Falling Symbols to Dedicated Class:**
+  - Created new `falling_symbols.py` module to encapsulate all falling symbols functionality
+  - Implemented `FallingSymbols` class with proper initialization, animation, and interaction methods
+  - Added robust symbol management with improved collision detection and cleanup
+  - Enhanced API with methods for starting/stopping animations and symbol manipulation
+- **Modified GameplayScreen to Use New Class:**
+  - Updated `gameplay_screen.py` to import and utilize the new `FallingSymbols` class
+  - Removed redundant methods and properties now handled by the dedicated class
+  - Improved click handling by delegating symbol detection to the specialized class
+  - Enhanced cleanup and resource management in window destruction sequence
+- **Code Quality Improvements:**
+  - Reduced code duplication by centralizing falling symbols logic
+  - Improved error handling throughout the system
+  - Better separation of concerns between gameplay logic and visual effects
+  - Enhanced maintainability with modular design
+  - Added proper documentation for all new methods and classes
 
 ## 2024-07-31: Removed Game Over Trigger Functionality
 - **Completely Removed Game Over Penalty System:**
