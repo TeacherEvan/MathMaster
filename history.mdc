@@ -355,6 +355,27 @@ This ensures the lock animation properly adapts to any window size without overl
 
 Date: 2025-05-02
 
+## 2024-08-01: Improved Falling Symbols Gameplay
+- **Enhanced Falling Symbols Mechanics:**
+  - Increased touch radius for falling symbols by 20% for easier interaction
+  - Reduced falling speed by 10% to give players more time to spot and select symbols
+  - These changes provide a more balanced gameplay experience, especially for younger players
+  - Improved hitbox detection for more accurate symbol selection
+
+## 2024-07-28: Enhanced Particle Animation System with Character-Themed Particles
+- **Added Character-Themed Particle Effects:**
+  - Added a new system where orbiting particles now form recognizable letter and number shapes
+  - When a numerical or alphabetical character is revealed, particles briefly form its shape
+  - Implemented a smooth transition where particles morph between orbital rings and character shapes
+  - Character formations visually reinforce the math concepts being taught
+- **Technical Improvements:**
+  - Created new `_form_character_shape` method to generate particle coordinates for any alphanumeric character
+  - Added transition animations between particle states for smooth morphing effects 
+  - Implemented variable particle density based on character complexity
+  - Optimized performance with batch updates for smoother animations
+
+Date: 2025-05-02
+
  
  S a t u r d a y ,   M a y   1 7 ,   2 0 2 5   4 : 1 3 : 2 0   A M 
  

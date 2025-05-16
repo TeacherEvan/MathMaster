@@ -53,8 +53,8 @@ class FallingSymbols:
         if canvas_height <= 1 or canvas_width <= 1: 
             return  # Canvas not ready
 
-        # Exactly 7 seconds to fall from top to bottom as per blueprint
-        fall_speed = canvas_height / (7 * 20)  # Pixels per 50ms interval for 7 sec fall
+        # 7.7 seconds to fall from top to bottom (10% slower than original 7 seconds)
+        fall_speed = canvas_height / (7.7 * 20)  # Pixels per 50ms interval for 7.7 sec fall
 
         # Move existing symbols
         next_symbols = []
@@ -137,14 +137,14 @@ class FallingSymbols:
             self.canvas.after_cancel(self.animation_after_id)
             self.animation_after_id = None
     
-    def get_symbol_at_position(self, x, y, hit_radius=10):
+    def get_symbol_at_position(self, x, y, hit_radius=12):
         """
         Find the symbol at the given position.
         
         Args:
             x: X coordinate
             y: Y coordinate
-            hit_radius: Radius around point to check for symbols
+            hit_radius: Radius around point to check for symbols (increased by 20%)
             
         Returns:
             (symbol_info, symbol_index) or (None, -1) if no symbol found
