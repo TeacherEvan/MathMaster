@@ -1,0 +1,105 @@
+Game Blueprint: MathMaster Python - Beta Test Run
+
+1. Core Information:
+* Game Title: MathMaster
+* Platform: Python (Tkinter, PyQt, or similar)
+* Target OS: Windows (desktop)
+* Genre: 2D Educational Puzzle Game
+* Input: Mouse Click (Windows) - Multi-click support required.
+* Orientation: Landscape Only
+* Resolution: Automatic detection and scaling to fit window.
+* Overall art theme: Computer science sprinkled with a touch of Matrix 
+
+2. Welcome Screen:
+* Background: Solid Black.
+* Background Elements: Semi-transparent, static algebraic problems (e.g., x+5=10, 3y=9) 
+    faintly visible behind the main elements. [Clarification Needed: 6 different problems spread out, randomly generated examples, about 20% visibility?]
+* Title: "Math Master" (Centred, prominent font).
+* Image: Below the title, a graphic of a "muscular, veiny brain". [Clarification Needed: Specify 
+    style - Comic, pulsing slightly, flexing intensely? Simple animation preferred, generated in 
+    Python using available libraries.]
+* Credit: "Created By Teacher Evan" (Centered at the bottom).
+
+3. Level Select Screen:
+* Provides buttons or selectable areas for different difficulty levels.
+* Level 1: Easy
+* Focus: Addition & Subtraction with one variable.
+* Examples: 2+x=19, 8−x=6, 4+x−1=8.
+* [Clarification Needed: Define range for numbers and answers: Whole numbers, 
+    focus on multiplications not involving values >200, Generate 50 within provided parameters. 
+    Welcome to alternate the location of "X"]
+* Level 2: Medium
+* Focus: Multiplication with one variable.
+* Examples: 5x=20, 7x=49. (Ensure integer answers for medium difficulty).
+* [Clarification Needed: Define range for numbers and answers (e.g., factors up to 20, Answers 
+    not >300) Generate 50]
+* Level 3: Medium too (Division) 
+* Focus: Division with one variable (variable can be divisor or dividend).
+* Examples: 18/x=6, x/4=5, 9/x=3. (Ensure integer answers).
+* [Clarification Needed: no answers >300, integers welcome. generate 50]
+
+4. Gameplay Screen Layout:
+* Screen divided into three vertical sections (Windows A, B, C) by two border lines.
+* Window A (Left - Approx 25% width): Problem Display
+* Displays the current mathematical problem clearly (e.g., 8x=24).
+* Window B (Center - Approx 40% width): Solution Steps (text displayed in red 30% 
+    visibility: "Hit the 'X' on the right!")
+* Contains 8 horizontal lines occupying the bottom ~2/3rds of this window. (NOWHERE DOES THIS SAY TO MAKE THE LINES INVISIBLE!!!!!!!!!!!!!!! LOGIC FUCKNUTS)
+* The step-by-step solution to the problem in Window A is pre-calculated and assigned to these 
+    lines (e.g., Line 1: 8x=24, Line 2: x=24/8, Line 3: x=3).
+* Crucially: All characters (numbers, variables, operators) on these lines are initially invisible.
+* Window C (Right - Approx 35% width): Symbol Interaction Area
+* This area contains falling symbols.
+
+5. Gameplay Mechanics:
+* Symbol Rain (Window C):
+* Symbols continuously generate at the top of Window C and drift downwards slowly. ALL SYMBOLS ARE THE SAME SIZE!! 
+* Symbol Set: Digits 0−9, Variable X, Operators +,−,=,÷ (use standard division symbol), 
+    x (lowercase for multiplication, if needed in steps).
+* Symbols should fill the space but ideally not overlap excessively, or phase through each other. 
+    They disappear upon reaching the bottom. 
+    speed:  seconds from top to bottom,  All symbols spawn on a loop and get destroyed if touched
+     or clicked, regardless if correct
+* Solving Process:
+* The player must click the symbols in Window C that correspond to any required character in the
+     invisible solution steps shown in Window B, in any sequence.
+* Correct Click:
+* When the player clicks the clone symbol in Window C:
+* That corresponding character becomes visible in its place in Window B.
+* The revealed character in Window B briefly flashes or pulses bright green to confirm correctness.
+* Incorrect Click:
+* When the player clicks a symbol in Window C that is not the required character:
+* A "glass crack" visual effect appears that is randomly generated throughout the display. The length of the cracks sizes should be randomly rendered. 
+    Im using a "-" (*MINUS* symbol) to reference the sizes. the sizes have to be between >10 "-" and >40 "-" on a random screen location.
+* An internal counter for incorrect clicks increases by 1.
+* Failure Condition:
+* After 20 incorrect clicks:
+* Gameplay pauses.
+* A "glass shatter" animation plays over the screen.
+* All remaining invisible characters in the solution steps (Window B) are revealed instantly in red. After 5 seconds the player will be allowed to click which will trigger
+* A "Level Failed" pop-up window.
+
+6. Level Failed Pop-Up:
+* Title: "Try Again?"
+* Buttons:
+* "Retry": Restarts the current level with the same or a new problem of similar difficulty.
+* "Level Select": Returns the player to the Level Select screen.
+
+7. Controls:
+* Gameplay: Click symbols in Window C.
+* System: Esc key exits the game. [Clarification Needed: Should there be a confirmation prompt 
+    before exiting: No]
+
+8. Constraints & Technical Notes:
+* No External Assets: "All sounds and visuals have to be created creatively using Python 
+    scripts and available resource libraries."
+
+* Multi-Digit Numbers: Multi-digit numbers (like '24' in the example) formed by clicking 
+    single digits ( '2' then '4') The logic needs to handle assembling these from sequential 
+    single-digit clicks in Window C to reveal the multi-digit number in Window B.
+
+Enquire Areas Still Requiring Clarification:
+  
+No Confirmation prompt for exiting the game
+
+   

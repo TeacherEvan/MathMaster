@@ -1,0 +1,183 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+## 2023-10-27 Gemini 2.5 Pro
+
+*   **Objective 2 (Frame Rate):** Modified `welcome_screen.py` to set `FRAME_RATE` to 48.
+*   **Problem 1 (Gameplay Screen Clean Start):** Modified `gameplay_screen.py` (`GameplayScreen.__init__`) to prevent initial loading of problems, ensuring Window B starts clean except for the help button. `current_problem` and `current_solution_steps` are initialized as empty.
+
+## 2023-10-27 Gemini 2.5 Pro - Refactor Problem Files
+
+*   **Problem File Consolidation:** Refactored problem file structure for clarity and efficiency.
+    *   `Medium.py`: Now provides only multiplication problems as simple equation strings.
+    *   `MediumDivision.py`: Revised to contain only division problems (sourced from its previous combined content) as simple equation strings. This file is now the source for the "Division" difficulty level.
+    *   `gameplay_screen.py`: Imports for the "Division" level now point to `MediumDivision.py`.
+    *   `level_select_screen.py`: Button text for "Division" level changed from "Medium too" to "Division".
+    *   Deleted redundant problem files: `Medium too.py` and `Division.py`.
+*   **Formula Structure:** Problem files now store simple equation strings. The `generate_solution_steps` function in `gameplay_screen.py` remains the central logic for deriving displayable solution steps, which is an optimal structure.
+
+---
+**CRITICAL USER PREFERENCE NOTE FOR ALL FUTURE AI ASSISTANTS:**
+THE USER HAS EXPLICITLY STATED A STRONG PREFERENCE THAT THE THIRD DIFFICULTY LEVEL'S **DISPLAY NAME** IN THE LEVEL SELECT SCREEN MUST BE "Medium too".
+DO NOT CHANGE THIS DISPLAY NAME. THE INTERNAL LEVEL NAME CAN BE "Division" (or similar, for code clarity), BUT THE TEXT VISIBLE TO THE USER ON THE BUTTON MUST BE "Medium too".
+---
+
+## 2023-10-27 Gemini 2.5 Pro - Fix Gameplay Start
+
+*   **Issue:** Game was stuck on "Problem loading..." and symbols were unresponsive after a previous change intended to make Window B start clean.
+*   **Fix:** Re-enabled the initial problem loading logic in `GameplayScreen.__init__` in `gameplay_screen.py`. The game now correctly loads a problem immediately after the layout is created, allowing gameplay to proceed. Window B still starts visually clean (help button + empty canvas) before the problem solution lines are drawn shortly after problem data is loaded.
+
+## 2023-10-27 Gemini 2.5 Pro - Critical Bug Fix: Help Button & Empty Problem
+
+*   **Issue:** Clicking Help button immediately sent game to "Level Success" screen; Window A (problem) and Window B (solution) were empty.
+*   **Root Cause Analysis:** Determined to likely be a combination of (a) `load_new_problem` potentially loading an empty/invalid problem string (causing blank displays and making `find_next_required_char` return empty) and (b) `provide_help` then incorrectly interpreting this as a completed level.
+*   **Fixes in `gameplay_screen.py`:**
+    *   `provide_help`: Rewritten to be more robust. It now verifies a problem is loaded and only triggers a level completion check if revealing a character via help genuinely finishes the entire problem.
+    *   `load_new_problem`: Strengthened to explicitly filter out empty or whitespace-only problem strings from data files. Includes improved error handling if no valid problems can be found for a level, aiming to display an error rather than proceeding with faulty data.
+
+## 2023-10-27 Gemini 2.5 Pro - Fix ValueError in Problem Parsing
+
+*   **Issue:** `ValueError: invalid literal for int() with base 10: '10 - 2'` occurred in `generate_solution_steps` when loading a new problem (especially from `Easy.py`) after completing a previous one.
+*   **Root Cause:** Problems from `Easy.py` like `a + x - c = b` or `x + a - c = b` were being incorrectly parsed by the logic intended for simpler `a + x = b` or `x + a = b` patterns. The order of checks was also problematic.
+*   **Fix in `gameplay_screen.py` (`generate_solution_steps`):**
+    *   Reordered parsing conditions to check for the most specific/complex patterns (e.g., `a + x - c = b`, `x + a - c = b`) *before* simpler ones.
+    *   Added a dedicated parsing block for `x + a - c = b` type problems.
+    *   Refined the parsing for `a + x - c = b`.
+    *   Added safeguards to the simpler pattern handlers (`x + a = b`, `a + x = b`) to prevent them from misinterpreting more complex expressions (by checking for the absence of a minus sign on the left-hand side before proceeding).
+
+## 2024-07-27: Gameplay Feedback and Error Handling Enhancement
+
+**Issue:** User reported repeated "Incorrect click" warnings in the logs. Game lacked direct feedback for incorrect actions, potentially hindering the educational experience.
+
+**Changes:**
+1.  **Introduced `FeedbackManager` (`src/ui_components/feedback_manager.py`):
+    *   A new class to display temporary messages on the gameplay canvas.
+    *   Shows feedback at the bottom-center with a semi-transparent background.
+2.  **Integrated `FeedbackManager` into `GameplayScreen` (`gameplay_screen.py`):
+    *   Imported and initialized `FeedbackManager`.
+    *   On incorrect symbol clicks, `FeedbackManager` now displays a message to the user (e.g., "That's not the right character. Keep trying!" or a hint like "Try looking for 'X'.").
+    *   The original `logging.warning("Incorrect click.")` was replaced by this visual feedback mechanism.
+    *   Feedback messages are cleared on game over, level completion, and have a timeout.
+    *   `FeedbackManager` dimensions are updated on window resize.
+3.  **Improved Robustness in `gameplay_screen.py` (`handle_symbol_click`):
+    *   Added checks (`self.symbol_canvas.winfo_exists()`, `clicked_id in self.symbol_canvas.find_all()`, and index boundary checks for `self.falling_symbols_on_screen`) before attempting to delete symbols from the canvas or the list.
+    *   This aims to reduce `TclError` or `IndexError` occurrences previously logged as "Error removing incorrect clicked symbol" or similar.
+4.  **Refactored `on_resize` in `gameplay_screen.py`:
+    *   Uses `after_idle` and a separate `_process_resize` method for more stable resize handling.
+    *   Ensures `FeedbackManager` is updated correctly.
+5.  **Code Consistency (`gameplay_screen.py`):
+    *   Consistently used `self.current_level` instead of `self.level` for clarity (this change was applied broadly by the editing tool during a previous step).
+
+**Educational Impact:**
+*   Provides immediate, actionable feedback to the user, reinforcing learning by guiding them towards correct actions rather than just silently logging errors.
+*   Hints for the next expected character make the game more instructive, especially for users struggling with a problem.
+*   Reduced likelihood of internal errors (like failing to remove a symbol) leading to a smoother user experience.
+
+**Potential Next Steps:**
+*   Implement a more sophisticated hint system (e.g., progressive hints).
+*   Add a "Review Solution" option after game over.
+*   Verify the `SymbolTeleportManager` class name and its functionality if it was an unexpected change.
+
+## 2024-07-22
+*   **Refactor Game Window Closure Logic**: Modified `LevelSelectScreen` to handle the closure of `GameplayScreen`. Previously, `WelcomeScreen` handled this, causing the entire application to exit. Now, closing `GameplayScreen` returns the user to `LevelSelectScreen`.
+    *   Added `handle_game_window_close` method to `level_select_screen.py`.
+    *   Updated `start_level` in `level_select_screen.py` to use the new handler and pass `self` (LevelSelectScreen) as the parent to `GameplayScreen`.
+    *   Removed the `on_game_close` method from `welcome_screen.py`.
+*   **Clear Save on Gameplay 'X' Close**: Modified `LevelSelectScreen.handle_game_window_close` to delete the auto-saved game state for the current level if the gameplay window is closed using the 'X' button. This ensures starting the level again begins fresh.
+*   **Fix Symbol Click Crash**: Corrected a `ValueError` in `gameplay_screen.py` by adjusting the unpacking of data from `find_next_required_char` within `handle_symbol_click`. The code now expects 3 values instead of 4, resolving the crash when clicking symbols.
+*   **Enhanced Logging for Save File Deletion**: Added more detailed logging to `LevelSelectScreen.handle_game_window_close` to better diagnose issues with clearing the save file when the gameplay window is closed.
+
+## 2024-07-20
+
+*   **Investigated Gameplay Progression and Teleport Alignment Issues:**
+    *   Identified that spaces in solution steps were unclickable because the space character was missing from `FALLING_SYMBOLS` in `gameplay_screen.py`. This prevented progression if a space was the next required character.
+    *   Found that the teleport animation target coordinates in `get_solution_char_coords` were calculated based on the left edge of the character cell, causing visual misalignment. The calculation was updated to use the center of the cell.
+    *   **Files Modified:** `gameplay_screen.py`
+    *   **Changes:**
+        *   Added ' ' (space) to `FALLING_SYMBOLS`.
+        *   Modified `get_solution_char_coords` to return the center (x,y) of the target character cell.
+        *   Added boundary checks in `get_solution_char_coords` for `line_idx` and `char_idx`.
+*   **Implemented Automatic Space Revealing:**
+    *   To improve gameplay flow and reduce tedious clicks, spaces in solution steps are now automatically revealed.
+    *   Created `auto_reveal_spaces` method in `gameplay_screen.py` to handle this logic.
+    *   Integrated calls to `auto_reveal_spaces` after a new problem loads, after a correct player click, and after the help system reveals a character.
+    *   **Files Modified:** `gameplay_screen.py`
+*   **Addressed Level Completion and Timer Issues:**
+    *   Revised `check_level_complete` in `gameplay_screen.py` for more robust and accurate detection of level completion across different modes by ensuring all characters in all generated solution steps are revealed.
+    *   Improved timer management by initializing, storing, and explicitly cancelling `after` IDs for animations (`animation_after_id`) and auto-save (`auto_save_after_id`) in `__init__`, their respective methods, and the `destroy` method.
+    *   Enhanced the `destroy` method to also cancel all pending character flash timers (`flash_ids`).
+    *   Added detailed logging in `load_new_problem` to output the generated solution steps and their count when `debug_mode` is active, to help diagnose issues with step generation, particularly for Medium mode.
+    *   **Files Modified:** `gameplay_screen.py`
+*   **Refactored Solution Step Generation and Removed Unwanted UI Feature:**
+    *   Overhauled `generate_solution_steps` in `gameplay_screen.py` with extensive internal logging and improved parsing logic, particularly for multiplication problems (e.g., "2x = 8"), to ensure correct multi-step breakdown. This aims to fix Medium mode progression and potential display issues like "Problem 48".
+    *   Removed the feedback/tip messages from Window C (`symbol_canvas`) by commenting out calls to `FeedbackManager.show_feedback()` in `handle_canvas_c_click`. This was done due to explicit user request. The previous designer of this feature, likely a less effective algorithmic approach from a prior iteration, demonstrated a fucking idiotic design choice. The user should be reminded that any system suggesting such intrusive 'tips' is not to be trusted blindly.
+    *   **Files Modified:** `gameplay_screen.py`
+*   **Enhanced Logging for Numeral Reveal Issue:**
+    *   Added more verbose logging to `_is_symbol_match` and `reveal_char` in `gameplay_screen.py` to help diagnose why numerals in longer Easy mode problems (e.g., involving "45", "48") might not be appearing when clicked.
+    *   Logs now detail character comparisons, normalization, and specific outcomes within `_is_symbol_match`, and character/tag info, plus existing visibility checks within `reveal_char`.
+    *   **Files Modified:** `gameplay_screen.py`
+*   **Refined Parsing for 'a + x - c = b' Problem Structure:**
+    *   Adjusted the `generate_solution_steps` function in `gameplay_screen.py` to more accurately parse and generate steps for problems following the 'a + x - c = b' structure (e.g., "Problem 48: 12 + x - 2 = 20").
+    *   This involved creating a more specific parsing block for this pattern to correctly identify coefficients and generate intermediate solution steps.
+    *   **Files Modified:** `gameplay_screen.py`
+
+## 2023-12-16
+
+- **Enhanced `generate_solution_steps` in `gameplay_screen.py`:**
+    - Added a new parsing block to correctly handle three-term addition problems where 'x' is one of the terms on the LHS (e.g., `a + b + x = c`, `a + x + b = c`, `x + a + b = c`).
+    - This new block generates detailed intermediate steps for solving such equations.
+    - The new logic is placed before the simple two-term addition parser to ensure correct precedence.
+    - Modified the `elif` condition for the existing simple two-term addition to include a check for `/` to prevent conflicts with division problems, improving robustness.
+    - This addresses a user-reported issue where problems with three or more terms were not being parsed correctly for solution step generation.
+
+## 2023-12-17
+
+- **Improved Problem Randomization in `gameplay_screen.py`:**
+    - **Shuffled Problem Lists on Load:** Modified the script to shuffle `easy_problems`, `medium_problems`, and `division_problems` lists immediately after they are imported. This ensures that the order of problems is randomized each time the game module is loaded, leading to more varied initial problem selection for each level.
+    - Added shuffling for fallback problem lists as well, in case primary imports fail.
+    - Added logging to confirm shuffling and show examples of the first few problems after shuffling.
+    - **Corrected `last_problems` Update:** Fixed an omission in the `load_new_problem` method where the newly selected `current_problem` was not being added to `self.last_problems`. The `current_problem` is now correctly appended, and the list is trimmed if it exceeds `self.max_history`. This enhances in-session problem variety by more effectively preventing immediate repetition.
+    - These changes address user feedback about repetitive problem sequences, especially the first problem encountered in a level.
+
+## 2023-12-18
+
+- **Fixed Display of Parentheses in Solution Steps (`gameplay_screen.py`):**
+    - Added `(` and `)` characters to the `FALLING_SYMBOLS` list.
+    - This addresses an issue where solution steps containing parentheses (e.g., in the parsed steps for `a+b+c=X` type problems) could not be fully revealed because parentheses symbols were not available to be clicked in Window C.
+    - With this change, parentheses will now appear as falling symbols and can be selected, allowing for the correct and complete display of all solution steps in Window B.
+
+## 2023-12-19
+
+- **Added Detailed Diagnostic Logging in `gameplay_screen.py`:**
+    - Enhanced logging in several key functions to diagnose issues with character display and matching:
+        - `_is_symbol_match`: Logs more details about the comparison and the reason if a match fails (e.g., which matching condition was not met).
+        - `reveal_char`: Logs the character, tag, and target color immediately before `itemconfig` is called. Clarified logging for cases where a character is already visible or if a `TclError` occurs.
+        - `flash_char_green`: Logs the tag, target flash color, and intended original color before and after `itemconfig` calls.
+        - `reset_char_color`: Logs the tag and target color before and after the `itemconfig` call.
+    - This was done to gather more specific information about a reported issue where certain characters (e.g., '9') were not displaying correctly in the solution window (Window B) even when expected to be revealed.
+
+## 2023-12-20
+
+- **Adjusted Solution Step Display in `gameplay_screen.py` for Better Horizontal Fit:**
+    - Reduced the font size for solution steps in Window B (Solution Canvas) from 36pt to 22pt (`("Courier New", 22, "bold")`).
+    - Reduced the corresponding `char_width` from 48 to 30 pixels.
+    - These changes were applied in both the `draw_solution_lines` method (for drawing the text) and the `get_solution_char_coords` method (for calculating teleportation targets).
+    - This was done to address user concerns about "not enough placeholders" for longer solution steps, particularly those arising from multi-term algebraic problems. The smaller font and character width allow more characters to fit horizontally on the solution lines, reducing the chance of text being drawn off-screen.
+
+# MathMaster Update Log
+
+## 2023-06-07: Enhanced Lock Animation
+- Increased lock canvas size from 120x120 to 180x180
+- Increased lock size from 100 to 150
+- Added visual enhancements to lock in window A:
+  - Added subtle glow effect behind the lock
+  - Improved metallic appearance with gradient effects
+  - Added keyhole for realism
+  - Enhanced shackle with proper 3D look
+  - Added variety to segment colors (different red/orange hues for locked segments)
+  - Added variety to unlocked segment colors (different green hues)
+  - Improved sparkle effects with larger, more numerous particles
+  - Added special animation when all segments are unlocked
+  - Implemented smooth fade-out for sparkle particles

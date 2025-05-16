@@ -1,0 +1,345 @@
+import tkinter as tk
+from tkinter import Canvas
+import math
+import random
+import time
+import logging
+from typing import Tuple, List, Dict
+
+class GlowEffect:
+    def __init__(self, canvas: Canvas):
+        self.canvas = canvas
+        self.glowing_symbols: Dict[int, dict] = {}  # Store glowing symbol info
+        self.is_active = True
+        
+    def start_glow(self, symbol_id: int, is_left_side: bool) -> None:
+        """Start a pulsating glow effect for a symbol"""
+        # Base color based on symbol position
+        base_color = "#FF4444" if is_left_side else "#4444FF"  # Red for left, Blue for right
+        
+        # Create glow circle behind symbol
+        coords = self.canvas.bbox(symbol_id)
+        if not coords:
+            return
+            
+        center_x = (coords[0] + coords[2]) / 2
+        center_y = (coords[1] + coords[3]) / 2
+        size = max(coords[2] - coords[0], coords[3] - coords[1])
+        
+        glow = self.canvas.create_oval(
+            center_x - size/1.5, center_y - size/1.5,
+            center_x + size/1.5, center_y + size/1.5,
+            fill=base_color,
+            stipple='gray50',
+            state='normal',
+            tags=('glow',)
+        )
+        
+        # Store info for animation
+        self.glowing_symbols[symbol_id] = {
+            'glow_id': glow,
+            'base_color': base_color,
+            'center': (center_x, center_y),
+            'size': size,
+            'phase': 0.0
+        }
+        
+        # Ensure animation is running
+        if len(self.glowing_symbols) == 1:  # First symbol added
+            self._animate_glows()
+    
+    def stop_glow(self, symbol_id: int) -> None:
+        """Stop the glow effect for a symbol"""
+        if symbol_id in self.glowing_symbols:
+            glow_info = self.glowing_symbols.pop(symbol_id)
+            self.canvas.delete(glow_info['glow_id'])
+    
+    def _animate_glows(self) -> None:
+        """Animate all active glow effects"""
+        if not self.is_active or not self.glowing_symbols:
+            return
+            
+        for symbol_id, info in self.glowing_symbols.items():
+            # Update phase
+            info['phase'] += 0.1
+            
+            # Calculate current size multiplier (1.0 to 1.3)
+            size_mult = 1.0 + 0.3 * abs(math.sin(info['phase']))
+            
+            # Calculate current opacity (0.2 to 0.6)
+            opacity = 0.2 + 0.4 * abs(math.sin(info['phase']))
+            
+            # Update glow position and size
+            size = info['size'] * size_mult
+            self.canvas.coords(
+                info['glow_id'],
+                info['center'][0] - size/1.5,
+                info['center'][1] - size/1.5,
+                info['center'][0] + size/1.5,
+                info['center'][1] + size/1.5
+            )
+            
+            # Update stipple pattern based on opacity
+            stipple = f'gray{int(opacity * 100)}'
+            self.canvas.itemconfig(info['glow_id'], stipple=stipple)
+        
+        # Continue animation
+        self.canvas.after(50, self._animate_glows)
+
+class PortalEffect:
+    def __init__(self, canvas: Canvas):
+        self.canvas = canvas
+        self.portal_particles: List[int] = []  # Store portal particle IDs
+        self.portal_colors = [
+            "#FF00FF",  # Magenta
+            "#00FFFF",  # Cyan
+            "#FF69B4",  # Hot Pink
+            "#4B0082",  # Indigo
+            "#7FFFD4",  # Aquamarine
+            "#FF1493"   # Deep Pink
+        ]
+        
+    def create_portal(self, x: float, y: float, duration: float = 1.0) -> None:
+        """Creates an LSD-style portal effect at the given coordinates"""
+        radius = 5
+        max_radius = 40
+        particles = 12
+        
+        def animate_portal(start_time: float, current_radius: float) -> None:
+            if time.time() - start_time > duration:
+                self._cleanup_portal()
+                return
+                
+            # Clear previous particles
+            for particle_id in self.portal_particles:
+                self.canvas.delete(particle_id)
+            self.portal_particles.clear()
+            
+            # Create new particles in a circular pattern
+            for i in range(particles):
+                angle = (i / particles) * 2 * math.pi
+                color = random.choice(self.portal_colors)
+                
+                # Create spiral effect
+                spiral_x = x + current_radius * math.cos(angle + time.time() * 5)
+                spiral_y = y + current_radius * math.sin(angle + time.time() * 5)
+                
+                particle = self.canvas.create_oval(
+                    spiral_x - 3, spiral_y - 3,
+                    spiral_x + 3, spiral_y + 3,
+                    fill=color, outline=color
+                )
+                self.portal_particles.append(particle)
+            
+            # Update portal size with pulsing effect
+            new_radius = current_radius
+            if current_radius < max_radius:
+                new_radius += 2
+            
+            self.canvas.after(16, lambda: animate_portal(start_time, new_radius))
+            
+        animate_portal(time.time(), radius)
+    
+    def _cleanup_portal(self) -> None:
+        """Cleans up portal particles"""
+        for particle_id in self.portal_particles:
+            self.canvas.delete(particle_id)
+        self.portal_particles.clear()
+
+class ErrorEffect:
+    def __init__(self, canvas: Canvas):
+        self.canvas = canvas
+        self.overlay_id = None
+        self.crack_ids = []
+        self.shockwave_ids = []  # New: for shockwave effect
+        
+    def show_error(self) -> None:
+        """Shows the error effect with red overlay and cracks"""
+        # Create shockwave first
+        self._create_shockwave()
+        
+        # Delay the overlay and cracks slightly
+        self.canvas.after(200, self._show_overlay_and_cracks)
+    
+    def _create_shockwave(self) -> None:
+        """Create and animate a shockwave effect for error feedback"""
+        def get_stipple_pattern(opacity):
+            """Convert opacity (0-1) to valid stipple pattern"""
+            if opacity >= 0.75:
+                return 'gray75'
+            elif opacity >= 0.5:
+                return 'gray50'
+            elif opacity >= 0.25:
+                return 'gray25'
+            else:
+                return 'gray12'
+
+        def animate_shockwave(radius, opacity):
+            try:
+                # Get center coordinates
+                center_x = self.canvas.winfo_width() / 2
+                center_y = self.canvas.winfo_height() / 2
+                
+                # Create shockwave with valid stipple pattern
+                shockwave = self.canvas.create_oval(
+                    center_x - radius, center_y - radius,
+                    center_x + radius, center_y + radius,
+                    outline='#ff0000',  # Red color for error feedback
+                    width=2,
+                    stipple=get_stipple_pattern(opacity)
+                )
+                
+                # Animate the shockwave
+                if opacity > 0:
+                    self.canvas.after(50, lambda: animate_shockwave(radius + 5, opacity - 0.1))
+                else:
+                    self.canvas.delete(shockwave)
+                    
+            except Exception as e:
+                logging.error(f"Error in shockwave animation: {e}")
+                
+        # Start the animation
+        animate_shockwave(10, 1.0)
+    
+    def _show_overlay_and_cracks(self) -> None:
+        """Shows the overlay and cracks with original timing"""
+        try:
+            # Create semi-transparent red overlay using stipple instead of alpha
+            self.overlay_id = self.canvas.create_rectangle(
+                0, 0, self.canvas.winfo_width(), self.canvas.winfo_height(),
+                fill='#FF0000', stipple='gray25', state='normal'  # gray25 for 25% opacity
+            )
+            
+            # Create cracks
+            self._create_cracks()
+            
+            # Start fade out after 1 second
+            self.canvas.after(1000, self._start_fade_out)
+            
+        except Exception as e:
+            logging.error(f"Error showing overlay and cracks: {e}")
+    
+    def _create_cracks(self) -> None:
+        """Creates crack effects on the screen"""
+        center_x = self.canvas.winfo_width() / 2
+        center_y = self.canvas.winfo_height() / 2
+        
+        for _ in range(8):  # Create 8 cracks
+            points = [(center_x, center_y)]
+            current_x, current_y = center_x, center_y
+            
+            # Generate random crack path
+            angle = random.uniform(0, 2 * math.pi)
+            length = random.uniform(50, 200)
+            
+            for _ in range(5):  # 5 segments per crack
+                angle += random.uniform(-0.5, 0.5)  # Slight angle variation
+                segment_length = length / 5
+                
+                new_x = current_x + math.cos(angle) * segment_length
+                new_y = current_y + math.sin(angle) * segment_length
+                
+                points.append((new_x, new_y))
+                current_x, current_y = new_x, new_y
+            
+            # Create the crack line with red glow effect
+            crack = self.canvas.create_line(
+                *[coord for point in points for coord in point],
+                fill='#FF0000',
+                width=2,
+                stipple='gray75'
+            )
+            self.crack_ids.append(crack)
+    
+    def _start_fade_out(self) -> None:
+        """Starts the fade out animation"""
+        self._fade_out(1.0, 5.0)  # 5 second fade
+    
+    def _get_valid_stipple(self, opacity):
+        """Convert opacity (0-1) to valid stipple pattern"""
+        if opacity <= 0.12:
+            return 'gray12'
+        elif opacity <= 0.25:
+            return 'gray25'
+        elif opacity <= 0.50:
+            return 'gray50'
+        else:
+            return 'gray75'
+
+    def _fade_out(self, current_alpha: float, duration: float, start_time: float = None) -> None:
+        """Handles the fade out animation"""
+        if start_time is None:
+            start_time = time.time()
+        
+        elapsed = time.time() - start_time
+        if elapsed >= duration:
+            # Clean up
+            if self.overlay_id:
+                self.canvas.delete(self.overlay_id)
+            for crack_id in self.crack_ids:
+                self.canvas.delete(crack_id)
+            return
+        
+        # Calculate new alpha
+        new_alpha = 1.0 - (elapsed / duration)
+        if new_alpha < 0:
+            new_alpha = 0
+            
+        # Get valid stipple pattern
+        stipple_pattern = self._get_valid_stipple(new_alpha)
+            
+        # Update overlay and crack transparency
+        if self.overlay_id:
+            self.canvas.itemconfig(self.overlay_id, stipple=stipple_pattern)
+        for crack_id in self.crack_ids:
+            self.canvas.itemconfig(crack_id, stipple=stipple_pattern)
+            
+        self.canvas.after(16, lambda: self._fade_out(new_alpha, duration, start_time))
+
+class SymbolTeleportManager:
+    def __init__(self, canvas_c: Canvas, canvas_b: Canvas):
+        self.canvas_c = canvas_c
+        self.canvas_b = canvas_b
+        self.portal_effect_c = PortalEffect(canvas_c)
+        self.portal_effect_b = PortalEffect(canvas_b)
+        self.error_effect = ErrorEffect(canvas_c)
+        self.glow_effect = GlowEffect(canvas_b)
+        self.active_symbols: Dict[int, bool] = {}  # Track active symbols and their side
+        
+    def teleport_symbol(self, symbol_id: int, start_pos: Tuple[float, float], 
+                       end_pos: Tuple[float, float], is_correct: bool, 
+                       is_left_side: bool = True) -> None:
+        """Handles the symbol teleportation animation"""
+        # Start portal effect at source with sparkles
+        self.portal_effect_c.create_portal(start_pos[0], start_pos[1])
+        
+        if is_correct:
+            # Create destination portal after a short delay
+            self.canvas_c.after(500, lambda: self._handle_correct_teleport(
+                symbol_id, end_pos, is_left_side))
+        else:
+            # Show error effect
+            self.canvas_c.after(500, self.error_effect.show_error)
+            
+        logging.info(f"Symbol teleport animation triggered - Correct: {is_correct}")
+    
+    def _handle_correct_teleport(self, symbol_id: int, end_pos: Tuple[float, float], 
+                               is_left_side: bool) -> None:
+        """Handle the correct symbol teleportation"""
+        # Create destination portal
+        self.portal_effect_b.create_portal(end_pos[0], end_pos[1])
+        
+        # Start glow effect after a short delay
+        self.canvas_b.after(1000, lambda: self._start_symbol_glow(
+            symbol_id, is_left_side))
+    
+    def _start_symbol_glow(self, symbol_id: int, is_left_side: bool) -> None:
+        """Start the glow effect for a correctly placed symbol"""
+        self.active_symbols[symbol_id] = is_left_side
+        self.glow_effect.start_glow(symbol_id, is_left_side)
+    
+    def remove_symbol(self, symbol_id: int) -> None:
+        """Remove a symbol's effects"""
+        if symbol_id in self.active_symbols:
+            self.glow_effect.stop_glow(symbol_id)
+            del self.active_symbols[symbol_id] 
