@@ -318,8 +318,9 @@ class SymbolTeleportManager:
             self.canvas_c.after(500, lambda: self._handle_correct_teleport(
                 symbol_id, end_pos, is_left_side))
         else:
-            # Show error effect
-            self.canvas_c.after(500, self.error_effect.show_error)
+            # Red error effects have been disabled as per user request
+            # Only the crack effects from error_animation.py will be shown
+            pass
             
         logging.info(f"Symbol teleport animation triggered - Correct: {is_correct}")
     

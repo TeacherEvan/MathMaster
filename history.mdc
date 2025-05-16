@@ -269,6 +269,14 @@ PLAYERS SHOULD NEVER BE PENALIZED FOR MAKING MISTAKES IN THIS EDUCATIONAL GAME.
 DO NOT SUGGEST OR IMPLEMENT ANY FUNCTIONALITY THAT LIMITS PLAYER PROGRESS BASED ON ERRORS.
 ---
 
+## 2024-07-31: Removed Red Error Visual Effects
+- **Disabled Red Error Visuals:**
+  - Removed the red overlay and red flash effects that appeared when an incorrect symbol was clicked
+  - Maintained the crack animations to provide subtle, non-punitive feedback on incorrect selections
+  - Modified the `teleport_symbol` method in `SymbolTeleportManager` to skip calling `error_effect.show_error`
+  - This change creates a less intimidating learning experience, encouraging exploration
+  - Part of the ongoing effort to make the game more supportive of the learning process
+
 ## 2024-07-31: Enhanced Level Complete Popup System
 - **Created Dedicated Level Complete Popup Component:**
   - Created new file `level_complete_popup.py` with an enhanced visual popup system
