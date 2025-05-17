@@ -438,3 +438,9 @@ The primary concern noted was the "Could not find transported symbol" error. The
     * Row Completion Particles (Explosion, Sparkle, Wave): Doubled quantities, 1 in 10 get pulse effect.
     * Level Cleared Particles (Radiating Circles, Stars, Rotating Sparkles): Counts halved.
     * Lock Segments: Added subtle 3D shading.
+
+* `lock_animation.py`: Removed a few specific explanatory comments from `_create_orbiting_particles` method as a test.
+
+* Enhanced `WormsWindow_B.py`: Worms now flicker with LSD colors when transporting a symbol.
+* Enhanced `Teleport_SymblDisplay_C_B.py`: Added an initial particle burst to portals and made spiraling portal particles more dynamic.
+* Modified `level_complete_popup.py`: Reduced decorative elements (border glow steps from 3 to 2, background math symbols from 10 to 7).

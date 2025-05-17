@@ -55,6 +55,20 @@ class WormAnimation:
         self.max_worms = 4
         self.canvas.tag_bind("worm_segment_clickable", "<Button-1>", self.handle_worm_click) # Bind to a new tag
         
+        self.lsd_colors = [
+            "#FF00FF",  # Magenta
+            "#00FFFF",  # Cyan
+            "#FFFF00",  # Yellow
+            "#FF0000",  # Red
+            "#00FF00",  # Lime Green
+            "#0000FF",  # Blue
+            "#FF69B4",  # Hot Pink
+            "#FFA500",  # Orange
+            "#ADFF2F",  # GreenYellow
+            "#EE82EE"   # Violet
+        ]
+        self.flicker_counter = 0 # For controlling flicker speed
+
         logging.info("WormAnimation initialized")
 
     def on_canvas_resize(self, event=None):
@@ -167,6 +181,18 @@ class WormAnimation:
             self.canvas.delete(worm['mouth'])
             worm['mouth'] = None
             
+        # Determine current color for the worm
+        current_worm_color = worm['color']
+        is_transporting = bool(worm.get('transport_target'))
+
+        if is_transporting:
+            # Flicker effect: change color every few frames
+            # A simpler approach is to pick one random LSD color for the whole worm per draw call during transport
+            # This might look more like a solid flicker than segment-by-segment chaos.
+            # If flicker_counter is used, it has to be part of the worm's state or global to this function for multiple worms.
+            # For now, let's make the whole worm a random LSD color when transporting.
+            current_worm_color = random.choice(self.lsd_colors)
+
         # Create segments in reverse order (tail to head)
         for i in range(self.worm_segments - 1, -1, -1):
             if i >= len(worm['history']):
@@ -180,10 +206,12 @@ class WormAnimation:
             segment_size = int(worm['segment_size'] * (0.7 + 0.3 * (i / self.worm_segments)))
             
             # Create segment
+            segment_fill_color = current_worm_color # Use the determined color for all segments
+            
             segment = self.canvas.create_oval(
                 x - segment_size, y - segment_size,
                 x + segment_size, y + segment_size,
-                fill=worm['color'],
+                fill=segment_fill_color,
                 outline="",
                 tags=("worm_segment", f"worm_{worm['id']}", "worm_segment_clickable")
             )

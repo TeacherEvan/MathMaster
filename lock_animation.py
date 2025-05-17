@@ -238,7 +238,7 @@ class LockAnimation:
         
         # Create particles in different orbital rings
         num_rings = 1 
-        particles_per_ring = [16]  # Doubled from 8 (originally 5 -> 8 -> 16)
+        particles_per_ring = [16]
         
         for ring_idx in range(num_rings):
             # Calculate radius for this ring
@@ -263,7 +263,6 @@ class LockAnimation:
                 # Random color from theme
                 color = random.choice(all_colors)
                 
-                # Determine if this particle should have a glowing pulsating effect (1 in 5)
                 is_glowing_pulsating = (i % 5 == 0)
 
                 # Create particle

@@ -89,7 +89,7 @@ class GlowEffect:
 class PortalEffect:
     def __init__(self, canvas: Canvas):
         self.canvas = canvas
-        self.portal_particles: List[int] = []  # Store portal particle IDs
+        self.portal_particles: List[Dict[str, any]] = [] # Store particle IDs and their properties
         self.portal_colors = [
             "#FF00FF",  # Magenta
             "#00FFFF",  # Cyan
@@ -103,48 +103,113 @@ class PortalEffect:
         """Creates an LSD-style portal effect at the given coordinates"""
         radius = 5
         max_radius = 40
-        particles = 12
+        particles_spiraling = 12
+        burst_particles_count = 15 # For initial burst
+        burst_particle_life = 10 # Frames for burst particles to live
+
+        # Initial Burst Effect
+        for _ in range(burst_particles_count):
+            angle = random.uniform(0, 2 * math.pi)
+            speed = random.uniform(1, 3)
+            burst_color = random.choice(self.portal_colors)
+            size = random.uniform(1, 3)
+            particle_id = self.canvas.create_oval(
+                x - size, y - size, x + size, y + size,
+                fill=burst_color, outline=''
+            )
+            self.portal_particles.append({
+                'id': particle_id, 'x': x, 'y': y, 'vx': math.cos(angle) * speed, 'vy': math.sin(angle) * speed,
+                'life': burst_particle_life, 'type': 'burst', 'original_size': size, 'color': burst_color
+            })
         
-        def animate_portal(start_time: float, current_radius: float) -> None:
-            if time.time() - start_time > duration:
-                self._cleanup_portal()
+        def animate_portal(start_time: float, current_radius: float, frame_count: int = 0) -> None:
+            if not self.canvas.winfo_exists(): return
+
+            # Animate existing burst particles
+            particles_to_remove_from_main_list = []
+            for p_data in self.portal_particles[:]: # Iterate copy for safe removal
+                if p_data.get('type') == 'burst':
+                    p_data['x'] += p_data['vx']
+                    p_data['y'] += p_data['vy']
+                    p_data['life'] -= 1
+                    new_size = p_data['original_size'] * (p_data['life'] / burst_particle_life)
+                    if p_data['life'] <= 0 or new_size <= 0:
+                        self.canvas.delete(p_data['id'])
+                        particles_to_remove_from_main_list.append(p_data)
+                    else:
+                        try:
+                            self.canvas.coords(p_data['id'], 
+                                           p_data['x'] - new_size, p_data['y'] - new_size, 
+                                           p_data['x'] + new_size, p_data['y'] + new_size)
+                            # Optional: fade color for burst particles
+                            # current_opacity = max(0, p_data['life'] / burst_particle_life)
+                            # faded_burst_color = self._apply_opacity(p_data['color'], current_opacity) 
+                            # self.canvas.itemconfig(p_data['id'], fill=faded_burst_color)
+                        except tk.TclError: # Item might be gone
+                            particles_to_remove_from_main_list.append(p_data)
+            
+            for p_to_remove in particles_to_remove_from_main_list:
+                 if p_to_remove in self.portal_particles: self.portal_particles.remove(p_to_remove)
+
+            # Spiraling Portal Logic
+            if time.time() - start_time > duration and all(p.get('type') != 'spiral' for p in self.portal_particles):
+                self._cleanup_portal() # Cleans up any remaining burst particles if portal duration ends
                 return
                 
-            # Clear previous particles
-            for particle_id in self.portal_particles:
-                self.canvas.delete(particle_id)
-            self.portal_particles.clear()
+            # Clear previous spiraling particles (those tagged as 'spiral')
+            current_spiral_particles = [p for p in self.portal_particles if p.get('type') == 'spiral']
+            for p_data in current_spiral_particles:
+                self.canvas.delete(p_data['id'])
+                self.portal_particles.remove(p_data)
             
-            # Create new particles in a circular pattern
-            for i in range(particles):
-                angle = (i / particles) * 2 * math.pi
-                color = random.choice(self.portal_colors)
-                
-                # Create spiral effect
-                spiral_x = x + current_radius * math.cos(angle + time.time() * 5)
-                spiral_y = y + current_radius * math.sin(angle + time.time() * 5)
-                
-                particle = self.canvas.create_oval(
-                    spiral_x - 3, spiral_y - 3,
-                    spiral_x + 3, spiral_y + 3,
-                    fill=color, outline=color
-                )
-                self.portal_particles.append(particle)
+            # Create new spiraling particles if portal is still active
+            if time.time() - start_time <= duration:
+                for i in range(particles_spiraling):
+                    angle = (i / particles_spiraling) * 2 * math.pi + (frame_count * 0.1) # Rotate spiral over time
+                    color = random.choice(self.portal_colors)
+                    
+                    # Pulsating radius for the spiral itself
+                    pulse_factor = 0.8 + 0.2 * math.sin(frame_count * 0.2)
+                    effective_radius = current_radius * pulse_factor
+
+                    spiral_x = x + effective_radius * math.cos(angle + time.time() * 5)
+                    spiral_y = y + effective_radius * math.sin(angle + time.time() * 5)
+                    
+                    particle_size = random.uniform(2,4) # random size for spiral particles
+
+                    particle = self.canvas.create_oval(
+                        spiral_x - particle_size, spiral_y - particle_size,
+                        spiral_x + particle_size, spiral_y + particle_size,
+                        fill=color, outline=color
+                    )
+                    self.portal_particles.append({'id': particle, 'type': 'spiral'}) # Tag as spiral
             
             # Update portal size with pulsing effect
             new_radius = current_radius
-            if current_radius < max_radius:
+            if current_radius < max_radius and time.time() - start_time <= duration:
                 new_radius += 2
             
-            self.canvas.after(16, lambda: animate_portal(start_time, new_radius))
+            self.canvas.after(30, lambda: animate_portal(start_time, new_radius, frame_count + 1))
             
         animate_portal(time.time(), radius)
     
     def _cleanup_portal(self) -> None:
         """Cleans up portal particles"""
-        for particle_id in self.portal_particles:
-            self.canvas.delete(particle_id)
+        for particle_data in self.portal_particles[:]: # Iterate copy for safe removal
+            try:
+                self.canvas.delete(particle_data['id'])
+            except tk.TclError:
+                pass # Item might be gone
         self.portal_particles.clear()
+
+    # Helper for fading, if used for burst particles. Requires canvas access.
+    # def _apply_opacity(self, hex_color, alpha):
+    #     r_orig, g_orig, b_orig = int(hex_color[1:3],16), int(hex_color[3:5],16), int(hex_color[5:7],16)
+    #     # Assuming black background for simplicity of fading to transparent over black
+    #     r = int(r_orig * alpha)
+    #     g = int(g_orig * alpha)
+    #     b = int(b_orig * alpha)
+    #     return f"#{r:02x}{g:02x}{b:02x}"
 
 class ErrorEffect:
     def __init__(self, canvas: Canvas):

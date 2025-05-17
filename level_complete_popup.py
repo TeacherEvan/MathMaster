@@ -211,7 +211,7 @@ class LevelCompletePopup:
         
         # Create glowing border
         border_width = 2
-        glow_steps = 3
+        glow_steps = 2
         
         for i in range(glow_steps):
             alpha = 0.6 - (i * 0.2)  # Decreasing alpha for outer glow
@@ -231,7 +231,7 @@ class LevelCompletePopup:
         
         # Only add decorative symbols if canvas is large enough
         if width > 60 and height > 60:
-            for _ in range(10):
+            for _ in range(7):
                 symbol = random.choice(math_symbols)
                 # Ensure valid ranges for random positions
                 x = random.randint(20, max(21, width - 20))

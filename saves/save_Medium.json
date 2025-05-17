@@ -1,0 +1,33 @@
+{
+  "level": "Medium",
+  "current_problem": "5x = 35",
+  "current_solution_steps": [
+    "5x = 35",
+    "x = 35 \u00f7 5",
+    "x = 7"
+  ],
+  "visible_chars": [
+    [
+      0,
+      1
+    ],
+    [
+      0,
+      4
+    ],
+    [
+      0,
+      0
+    ],
+    [
+      0,
+      3
+    ],
+    [
+      0,
+      2
+    ]
+  ],
+  "incorrect_clicks": 1,
+  "saved_cracks": []
+}
