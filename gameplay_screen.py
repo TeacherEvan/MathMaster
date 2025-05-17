@@ -875,7 +875,11 @@ class GameplayScreen(tk.Toplevel):
         lock_canvas_height = max(lock_canvas_height, 120)
         
         # Calculate appropriate lock size (70% of the smaller dimension)
-        lock_size = int(min(lock_canvas_width, lock_canvas_height) * 0.7)
+        # lock_size = int(min(lock_canvas_width, lock_canvas_height) * 0.7)
+        # MODIFICATION: Reduce lock size by approximately 50% from its original calculation.
+        # Original factor was 0.7, new factor will be ~0.35 of the smaller dimension of the available canvas area for the lock.
+        lock_size = int(min(lock_canvas_width, lock_canvas_height) * 0.35)
+        lock_size = max(lock_size, 40) # Ensure a minimum reasonable lock size (e.g., 40px)
         
         # Configure the canvas dimensions
         self.lock_canvas.config(width=lock_canvas_width, height=lock_canvas_height)
@@ -1229,6 +1233,60 @@ class GameplayScreen(tk.Toplevel):
         if self.debug_mode:
             logging.info(f"User clicked symbol: '{clicked_char}' at position {click_pos}")
             logging.info(f"Symbol has ID: {clicked_symbol_info.get('id')}")
+
+        # --- NEW: Check for Intervention Attempt First --- 
+        if self.currently_targeted_by_worm:
+            targeted_info = self.currently_targeted_by_worm
+            targeted_symbol_data_B = targeted_info['symbol_data'] # Data for symbol in Window B
+            
+            # Check if the clicked character in Window C matches the character the worm is targeting in Window B
+            if clicked_char == targeted_symbol_data_B.get('char'):
+                logging.info(f"Potential intervention: Clicked '{clicked_char}' matches worm-targeted char. Attempting for symbol at L{targeted_symbol_data_B.get('line_idx')}C{targeted_symbol_data_B.get('char_idx')}.")
+
+                intervention_successful = False # Default to false
+                if hasattr(self, 'worm_animation') and self.worm_animation:
+                    intervention_successful = self.worm_animation.attempt_intervention_kill(
+                        targeted_info['worm_id'], 
+                        targeted_symbol_data_B.get('id') # Canvas ID of the symbol in Window B worm was targeting
+                    )
+
+                if intervention_successful:
+                    logging.info(f"Intervention successful! Worm {targeted_info['worm_id']} exploded.")
+                    
+                    # Get details of the symbol in Window B that was targeted
+                    line_idx_B = targeted_symbol_data_B.get('line_idx')
+                    char_idx_B = targeted_symbol_data_B.get('char_idx')
+                    # The canvas item targeted_symbol_data_B.get('id') was deleted by attempt_intervention_kill
+
+                    # Trigger teleport effect for the clicked symbol from C to B's spot
+                    if hasattr(self, 'teleport_manager') and self.teleport_manager and clicked_symbol_info.get('id') is not None:
+                        target_coords_B = self.get_solution_char_coords(line_idx_B, char_idx_B)
+                        self.teleport_manager.teleport_symbol(
+                            clicked_symbol_info.get('id'), # ID of the symbol clicked in Window C
+                            start_pos=click_pos, # Original click position in Window C
+                            end_pos=target_coords_B, # Target position in Window B
+                            is_correct=True # Visual cue for a positive action
+                        )
+                        logging.info(f"Teleport effect triggered for symbol {clicked_symbol_info.get('id')} from C to B.")
+                    
+                    # Remove the clicked symbol from Window C's falling symbols list
+                    if symbol_index != -1: # Ensure symbol_index is valid from get_symbol_at_position
+                        self.falling_symbols.remove_symbol(symbol_index)
+                        logging.info(f"Removed clicked symbol (original index {symbol_index}, char '{clicked_char}') from Window C list.")
+
+                    # Mark character in Window B as visible and redraw to show it
+                    self.visible_chars.add((line_idx_B, char_idx_B))
+                    self.draw_solution_lines() # This will redraw, creating the new char visual
+                    logging.info(f"Marked L{line_idx_B}C{char_idx_B} as visible and redrew solution lines for Window B replacement.")
+
+                else: # Intervention failed
+                    logging.info(f"Intervention attempt for worm {targeted_info['worm_id']} failed (likely too late or target mismatch). Clicked char '{clicked_char}'. Worm target char '{targeted_symbol_data_B.get('char')}'.")
+                
+                # This targeting event has been processed (intervention attempted, successfully or not)
+                self.currently_targeted_by_worm = None
+                
+                return # Click action handled as an intervention attempt
+        # --- END NEW INTERVENTION LOGIC ---
 
         # --- NEW: Check for Rescue Attempt First --- 
         if self.currently_targeted_by_worm:

@@ -3,6 +3,7 @@ import random
 import math
 import time
 import logging
+from Explosions import ExplosionManager
 
 class WormAnimation:
     def __init__(self, canvas, canvas_width=None, canvas_height=None, symbol_transport_callback=None, symbol_targeted_for_steal_callback=None):
@@ -43,6 +44,9 @@ class WormAnimation:
         self.transport_interval = 15000  # 15 seconds (updated from 10000)
         self.transporting_symbols = {}  # Track symbols being transported
         self.symbol_targeted_for_steal_callback = symbol_targeted_for_steal_callback # New callback
+        
+        # Initialize Explosion Manager
+        self.explosion_manager = ExplosionManager(self.canvas)
         
         # Bind to canvas resize events
         self.canvas.bind("<Configure>", self.on_canvas_resize)
@@ -1039,31 +1043,42 @@ class WormAnimation:
         logging.debug("Removed all symbol glow borders and cleared internal glow IDs.")
                 
     def _remove_specific_worm(self, worm_to_remove):
-        """Removes a specific worm from the game and canvas."""
-        if not self.canvas.winfo_exists() or not worm_to_remove:
+        """Removes a specific worm from the canvas and internal list.
+        Also triggers an explosion if the worm is removed due to intervention.
+        """
+        if not self.canvas.winfo_exists():
             return
-        
-        logging.info(f"Removing worm ID: {worm_to_remove.get('id')}")
 
-        # Delete canvas items for the worm
-        for segment_id in worm_to_remove.get('segments', []):
-            self.canvas.delete(segment_id)
-        for eye_id in worm_to_remove.get('eyes', []):
-            self.canvas.delete(eye_id)
-        if worm_to_remove.get('mouth'):
-            self.canvas.delete(worm_to_remove.get('mouth'))
-        
-        # Remove from the list of active worms
         if worm_to_remove in self.worms:
+            logging.info(f"Removing worm ID: {worm_to_remove.get('id')}, current number of worms: {len(self.worms)}")
+            # Clear visual components of the worm
+            for segment in worm_to_remove.get('segments', []):
+                self.canvas.delete(segment)
+            for eye in worm_to_remove.get('eyes', []):
+                self.canvas.delete(eye)
+            if worm_to_remove.get('mouth'):
+                self.canvas.delete(worm_to_remove.get('mouth'))
+            
+            # Trigger an explosion at the worm's last head position
+            # The worm's head is at worm_to_remove['x'], worm_to_remove['y']
+            if hasattr(self, 'explosion_manager') and self.explosion_manager:
+                logging.info(f"Triggering explosion for removed worm ID {worm_to_remove.get('id')} at ({worm_to_remove.get('x')}, {worm_to_remove.get('y')})")
+                self.explosion_manager.create_explosion(
+                    worm_to_remove.get('x', self.width / 2), # Default to center if x not found
+                    worm_to_remove.get('y', self.height / 2),# Default to center if y not found
+                    base_size=self.worm_size * 3 # Explosion ~3x worm size
+                )
+
+            # Remove from list
             self.worms.remove(worm_to_remove)
-            logging.info(f"Worm ID: {worm_to_remove.get('id')} removed from active list.")
+            logging.info(f"Worm ID: {worm_to_remove.get('id')} removed. Worms remaining: {len(self.worms)}")
         else:
             logging.warning(f"Attempted to remove worm ID: {worm_to_remove.get('id')} but it was not in the active list.")
 
-    def attempt_rescue(self, worm_id, targeted_symbol_canvas_id):
-        """Called by GameplayScreen when player attempts to rescue a symbol.
+    def attempt_intervention_kill(self, worm_id, targeted_symbol_canvas_id):
+        """Called by GameplayScreen when player attempts to intervene against a symbol theft.
         If successful (worm was targeting this symbol and hasn't fully stolen it),
-        the worm is removed (dies).
+        the worm is removed (dies), and the symbol it was pushing is deleted from canvas.
         """
         worm_to_check = None
         for w in self.worms:
@@ -1072,30 +1087,37 @@ class WormAnimation:
                 break
         
         if not worm_to_check:
-            logging.warning(f"Rescue attempt: Worm ID {worm_id} not found.")
+            logging.warning(f"Intervention attempt: Worm ID {worm_id} not found.")
             return False
 
-        # Check if the worm is currently targeting the specified symbol for transport
-        # The critical part is that worm['transport_target'] is set by _target_symbol_for_transport
-        # and _begin_transport_animation is the point where the actual stealing animation starts.
-        # A rescue should ideally happen before _begin_transport_animation has taken full effect.
-        current_target = worm_to_check.get('transport_target')
-        if current_target and current_target.get('id') == targeted_symbol_canvas_id:
-            # Conditions met: Worm is actively targeting this symbol for transport.
-            # The player has revealed/clicked it in time.
-            logging.info(f"Successful rescue! Worm ID {worm_id} was targeting symbol canvas_id {targeted_symbol_canvas_id}. Worm dies.")
+        current_target_symbol_data = worm_to_check.get('transport_target')
+        
+        # Check if the worm is currently targeting the specified symbol for transport.
+        # This means worm['transport_target'] is set and its ID matches.
+        if current_target_symbol_data and current_target_symbol_data.get('id') == targeted_symbol_canvas_id:
+            logging.info(f"Successful intervention! Worm ID {worm_id} was targeting symbol canvas_id {targeted_symbol_canvas_id}. Worm dies, pushed symbol deleted.")
             
-            # Clear its target to prevent further transport actions for this symbol.
+            # 1. Delete the canvas item of the symbol the worm was actively pushing.
+            #    The targeted_symbol_canvas_id is the ID of this item on solution_canvas.
+            try:
+                self.canvas.delete(targeted_symbol_canvas_id)
+                logging.info(f"Successfully deleted canvas item {targeted_symbol_canvas_id} (symbol pushed by worm).")
+            except tk.TclError as e:
+                logging.warning(f"TclError deleting canvas item {targeted_symbol_canvas_id} during intervention: {e}")
+            except Exception as e:
+                logging.error(f"Unexpected error deleting canvas item {targeted_symbol_canvas_id}: {e}")
+
+            # 2. Clear the worm's target to prevent further transport actions for this symbol by this worm.
             worm_to_check['transport_target'] = None
             worm_to_check['mouth_state'] = 0 # Reset mouth
-            # Restore speed if it was modified during targeting/approaching (though not usually changed until push)
-            worm_to_check['speed_multiplier'] = worm_to_check.get('original_speed_before_push', 1.0) 
+            worm_to_check['speed_multiplier'] = worm_to_check.get('original_speed_before_push', 1.0) # Restore speed
 
+            # 3. Remove the worm itself.
             self._remove_specific_worm(worm_to_check)
             return True
         else:
-            targeted_id_log = current_target.get('id') if current_target else "None"
-            logging.info(f"Rescue attempt for worm ID {worm_id} and symbol {targeted_symbol_canvas_id} failed. Worm's current target: {targeted_id_log}.")
+            targeted_id_log = current_target_symbol_data.get('id') if current_target_symbol_data else "None"
+            logging.info(f"Intervention attempt for worm ID {worm_id} and symbol {targeted_symbol_canvas_id} failed. Worm's current target: {targeted_id_log}.")
             return False
 
 # For testing the animation standalone
