@@ -51,6 +51,10 @@ class WormAnimation:
         # Bind to canvas resize events
         self.canvas.bind("<Configure>", self.on_canvas_resize)
         
+        # Max worms and click handling
+        self.max_worms = 4
+        self.canvas.tag_bind("worm_segment_clickable", "<Button-1>", self.handle_worm_click) # Bind to a new tag
+        
         logging.info("WormAnimation initialized")
 
     def on_canvas_resize(self, event=None):
@@ -100,6 +104,49 @@ class WormAnimation:
             
         logging.info(f"Created {num_worms} worms")
         
+    def add_worm(self):
+        """Adds a single new worm to the animation."""
+        if not self.animation_running:
+            logging.warning("Attempted to add worm, but animation is not running.")
+            # Optionally, start animation if no worms exist?
+            # For now, just return or log.
+            return
+
+        if not self.width or self.width <= 1 or not self.height or self.height <= 1:
+            self.width = self.canvas.winfo_width()
+            self.height = self.canvas.winfo_height()
+            if not self.width or self.width <= 1 or not self.height or self.height <= 1:
+                logging.warning("Cannot add worm, canvas dimensions not ready.")
+                self.canvas.after(100, self.add_worm) # Try again shortly
+                return
+
+        # Create a new worm with random starting position and direction
+        new_worm = {
+            'x': random.randint(50, self.width - 50),
+            'y': random.randint(50, self.height - 50),
+            'angle': random.uniform(0, 2 * math.pi),
+            'segments': [],
+            'eyes': [],
+            'mouth': None,
+            'blink_state': False,
+            'blink_timer': random.randint(50, 200),
+            'mouth_state': 0,
+            'mouth_timer': random.randint(20, 100),
+            'history': [(0, 0)] * self.worm_segments,
+            'segment_size': self.worm_size + random.randint(-2, 2),
+            'color': f"#{random.randint(60, 120):02x}{random.randint(140, 180):02x}{random.randint(60, 100):02x}",
+            'last_interaction_time': 0,
+            'target_symbol': None,
+            'id': random.randint(10000, 19999) # Ensure unique ID range if needed
+        }
+        
+        # Draw the initial worm
+        # self._draw_worm(new_worm) # _draw_worm will be called by _update_worm via animate loop
+        
+        # Add to the list of worms
+        self.worms.append(new_worm)
+        logging.info(f"Added a new worm. Total worms: {len(self.worms)}")
+        
     def _draw_worm(self, worm):
         """Draw a single worm with all its components"""
         if not self.canvas.winfo_exists():
@@ -138,7 +185,7 @@ class WormAnimation:
                 x + segment_size, y + segment_size,
                 fill=worm['color'],
                 outline="",
-                tags=("worm_segment", f"worm_{worm['id']}")
+                tags=("worm_segment", f"worm_{worm['id']}", "worm_segment_clickable")
             )
             worm['segments'].append(segment)
             
@@ -1119,6 +1166,33 @@ class WormAnimation:
             targeted_id_log = current_target_symbol_data.get('id') if current_target_symbol_data else "None"
             logging.info(f"Intervention attempt for worm ID {worm_id} and symbol {targeted_symbol_canvas_id} failed. Worm's current target: {targeted_id_log}.")
             return False
+
+    def handle_worm_click(self, event):
+        """Handle click events on worm segments."""
+        if not self.animation_running:
+            return
+
+        clicked_items = self.canvas.find_withtag(tk.CURRENT) # Get items under cursor
+        if not clicked_items:
+            return
+
+        clicked_item_id = clicked_items[0]
+        tags = self.canvas.gettags(clicked_item_id)
+
+        # Check if a clickable worm segment was actually clicked
+        if "worm_segment_clickable" not in tags:
+            return
+            
+        # Identify which worm was clicked (Optional - for now, any worm click triggers duplication if allowed)
+        # worm_id_tag = next((tag for tag in tags if tag.startswith("worm_")), None)
+        # if not worm_id_tag: return
+        # clicked_worm_id = int(worm_id_tag.split('_')[1])
+
+        if len(self.worms) < self.max_worms:
+            logging.info(f"Worm clicked. Current worms: {len(self.worms)}. Adding a new worm (max: {self.max_worms}).")
+            self.add_worm() # Reuses the existing add_worm logic
+        else:
+            logging.info(f"Worm clicked, but max worms ({self.max_worms}) reached. No new worm added.")
 
 # For testing the animation standalone
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ import logging
 import math  # For math functions in gameplay animations
 import json
 import os
+import traceback # Added import
 from src.ui_components.feedback_manager import FeedbackManager # Added import
 from lock_animation import LockAnimation # Import the lock animation class
 from error_animation import ErrorAnimation # Import the new error animation class
@@ -675,40 +676,54 @@ class GameplayScreen(tk.Toplevel):
         self.after(2000, self._update_worm_solution_symbols)  # Update every 2 seconds
     
     def _check_if_step_complete(self, line_idx):
-        """Check if a solution step is now complete and handle lock animation update if needed"""
-        try:
-            current_line = self.current_solution_steps[line_idx]
-            step_is_now_complete = all((line_idx, char_idx) in self.visible_chars for char_idx in range(len(current_line)))
+        """Checks if all characters in a given solution step line are visible."""
+        if line_idx < 0 or line_idx >= len(self.current_solution_steps):
+            return False
+
+        current_line = self.current_solution_steps[line_idx]
+        # Consider only non-space characters for completion
+        required_chars_count = sum(1 for char_idx, char_val in enumerate(current_line) if char_val.strip())
+        
+        visible_required_chars_count = 0
+        for char_idx, char_val in enumerate(current_line):
+            if char_val.strip() and (line_idx, char_idx) in self.visible_chars:
+                visible_required_chars_count += 1
+        
+        is_complete = visible_required_chars_count >= required_chars_count
+        
+        if is_complete and line_idx not in self.completed_line_indices_for_problem: # Process only if newly completed
+            self.completed_line_indices_for_problem.add(line_idx)
+            logging.info(f"Step {line_idx + 1} ('{current_line}') is now complete.")
+
+            if self.lock_animation:
+                # This will be handled by _check_for_lock_visual_update which is called from reveal_char
+                # self.lock_animation.unlock_next_part() # Avoid double-unlocking
+                pass # Visual update handled elsewhere
             
-            # If step is complete and we haven't processed it yet
-            if step_is_now_complete and line_idx not in self.completed_line_indices_for_problem:
-                self.completed_line_indices_for_problem.add(line_idx)
+            if self.feedback_manager:
+                self.feedback_manager.show_feedback(f"Step {line_idx + 1} Unlocked!", 3000) # Changed "success" to 3000ms
+
+            # Worm specific logic after a row is completed
+            if self.worm_animation:
+                if not self.worm_animation.animation_running:
+                    logging.info("First row complete, starting worm animation and transport timer.")
+                    self.worm_animation.start_animation(1) # Start with one worm
+                    self._start_transport_timer() # Also start the transport timer logic
+                else:
+                    # If animation is already running (i.e., not the first row completed)
+                    logging.info(f"Row {line_idx + 1} complete, adding a new worm.")
+                    self.worm_animation.add_worm()
                 
-                # Trigger worm speed boost when a line is completed
-                if hasattr(self, 'worm_animation') and self.worm_animation:
-                    # If worm animation is running, call on_step_complete
-                    if self.worm_animation.animation_running:
-                        self.worm_animation.on_step_complete()
-                    
-                    # Only start worm and transport timer after first row is complete
-                    if len(self.completed_line_indices_for_problem) == 1:
-                        logging.info("First row completed - starting worm animation and scheduling first symbol transport in 10 seconds")
-                        # Start the worm animation if not already started
-                        if not self.worm_animation.animation_running:
-                            self.worm_animation.start_animation(1) # Start with 1 worm
-                            
-                        # Schedule first transport in 10 seconds
-                        self.after(10000, lambda: self._start_transport_timer())
-                
-                # Debug output
-                if self.debug_mode:
-                    num_distinct_completed_steps = len(self.completed_line_indices_for_problem)
-                    logging.debug(f"Step {line_idx} is now complete. Total completed steps: {num_distinct_completed_steps}")
-        except Exception as e:
-            logging.error(f"Error checking step completion: {e}")
+                # Call on_step_complete for speed boost logic etc.
+                self.worm_animation.on_step_complete()
+
+            self.check_level_complete() # Check if the entire level is complete
+            return True
             
+        return False # Step not complete or already processed
+
     def _start_transport_timer(self):
-        """Start the symbol transport timer in the worm animation"""
+        """Starts the worm's symbol transport timer if conditions are met."""
         if hasattr(self, 'worm_animation') and self.worm_animation and self.worm_animation.animation_running:
             # Manually trigger the first transport
             self.worm_animation._transport_random_symbol()
@@ -874,12 +889,10 @@ class GameplayScreen(tk.Toplevel):
         lock_canvas_width = max(lock_canvas_width, 100)
         lock_canvas_height = max(lock_canvas_height, 120)
         
-        # Calculate appropriate lock size (70% of the smaller dimension)
-        # lock_size = int(min(lock_canvas_width, lock_canvas_height) * 0.7)
-        # MODIFICATION: Reduce lock size by approximately 50% from its original calculation.
-        # Original factor was 0.7, new factor will be ~0.35 of the smaller dimension of the available canvas area for the lock.
-        lock_size = int(min(lock_canvas_width, lock_canvas_height) * 0.35)
-        lock_size = max(lock_size, 40) # Ensure a minimum reasonable lock size (e.g., 40px)
+        # Calculate appropriate lock size
+        # Original factor was 0.7, then 0.35. New factor is 0.35 * 0.9 = 0.315
+        lock_size = int(min(lock_canvas_width, lock_canvas_height) * 0.315) # Further 10% reduction
+        lock_size = max(lock_size, 30) # Ensure a minimum reasonable lock size (e.g., 30px, adjusted from 40)
         
         # Configure the canvas dimensions
         self.lock_canvas.config(width=lock_canvas_width, height=lock_canvas_height)
@@ -896,7 +909,7 @@ class GameplayScreen(tk.Toplevel):
             self.lock_animation = LockAnimation(
                 self.lock_canvas, 
                 x=lock_canvas_width/2, 
-                y=lock_canvas_height/2, 
+                y=lock_canvas_height * 0.65, # Moved south by 15% of canvas height (0.5 + 0.15 = 0.65)
                 size=lock_size,
                 level_name=self.current_level
             )
@@ -1288,40 +1301,6 @@ class GameplayScreen(tk.Toplevel):
                 return # Click action handled as an intervention attempt
         # --- END NEW INTERVENTION LOGIC ---
 
-        # --- NEW: Check for Rescue Attempt First --- 
-        if self.currently_targeted_by_worm:
-            targeted_info = self.currently_targeted_by_worm
-            targeted_symbol_data = targeted_info['symbol_data']
-            
-            # Check if the clicked character in Window C matches the character the worm is targeting
-            if clicked_char == targeted_symbol_data.get('char'):
-                logging.info(f"Potential rescue: Clicked '{clicked_char}' matches worm-targeted char. Attempting to rescue symbol at L{targeted_symbol_data.get('line_idx')}C{targeted_symbol_data.get('char_idx')}.")
-
-                # Reveal the character in Window B (this also adds to visible_chars etc.)
-                # reveal_char handles the visual update and game logic for revealing a character.
-                self.reveal_char(targeted_symbol_data.get('line_idx'), targeted_symbol_data.get('char_idx'))
-
-                # Attempt the rescue with the worm animation
-                if hasattr(self, 'worm_animation') and self.worm_animation:
-                    rescue_successful = self.worm_animation.attempt_rescue(
-                        targeted_info['worm_id'], 
-                        targeted_symbol_data.get('id') # Pass canvas ID of the symbol in Window B
-                    )
-                    if rescue_successful:
-                        logging.info(f"Rescue successful! Worm {targeted_info['worm_id']} was stopped.")
-                    else:
-                        logging.info(f"Rescue attempt for worm {targeted_info['worm_id']} failed (likely too late or target mismatch).")
-                
-                # This targeting event has been processed (successfully or not)
-                self.currently_targeted_by_worm = None
-                
-                # Remove the clicked symbol from Window C
-                if symbol_index != -1: # Ensure symbol_index is valid
-                    self.falling_symbols.remove_symbol(symbol_index)
-                
-                return # Click action handled as a rescue attempt
-        # --- END NEW RESCUE LOGIC ---
-
         # Check if this symbol was transported by a worm and can be returned
         if clicked_symbol_info.get('is_transported_worm_symbol'):
             original_line_idx = clicked_symbol_info['original_line_idx']
@@ -1333,8 +1312,10 @@ class GameplayScreen(tk.Toplevel):
 
             # Make it visible again in Window B
             try:
-                self.solution_canvas.itemconfig(original_char_tag, fill=revealed_color)
+                # Ensure the character's canvas item exists or is correctly configured by redrawing
+                # self.solution_canvas.itemconfig(original_char_tag, fill=revealed_color) # Itemconfig alone might not be enough if item state is problematic
                 self.visible_chars.add((original_line_idx, original_char_idx)) # Add back to visible set
+                self.draw_solution_lines() # Redraw lines to ensure the character appears correctly
                 self.flash_char_green(original_char_tag, revealed_color) # Flash it
 
                 # Remove from falling symbols in Window C

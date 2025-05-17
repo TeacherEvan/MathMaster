@@ -2,6 +2,7 @@ import tkinter as tk
 import random
 import math
 import time
+import logging
 
 class LockAnimation:
     def __init__(self, canvas, x, y, size=100, level_name="Easy"):
@@ -10,6 +11,8 @@ class LockAnimation:
         self.y = y
         self.size = size
         self.level_name = level_name
+        self.is_active = True
+        self.after_ids = {}
         self.lock_body_item = None
         self.shackle_item = None
         self.lock_parts_items = []  # Stores canvas item IDs for the 4 segments
@@ -202,8 +205,9 @@ class LockAnimation:
         all_colors = locked_colors + unlocked_colors + ['#ECF0F1', '#BDC3C7', '#95A5A6']
         
         # Create particles in different orbital rings
-        num_rings = 3
-        particles_per_ring = [12, 18, 24]  # More particles in outer rings
+        num_rings = 1 # Drastically reduced from 2
+        # Drastically reduced particle counts
+        particles_per_ring = [5]  # Reduced from [4, 6]
         
         for ring_idx in range(num_rings):
             # Calculate radius for this ring
@@ -250,14 +254,13 @@ class LockAnimation:
                 })
     
     def _animate_particles(self):
-        """Animate all particles orbiting around the lock"""
-        if not self.canvas.winfo_exists():
+        if not self.is_active or not self.canvas.winfo_exists():
             return
-            
+        
         try:
             # Update particles less frequently for better performance
             current_time = time.time()
-            should_update = (current_time - self.last_particle_update) > 0.02  # 50 FPS cap
+            should_update = (current_time - self.last_particle_update) > 0.04  # Changed from 0.02 (50 FPS) to 0.04 (~25 FPS)
             
             if should_update:
                 self.last_particle_update = current_time
@@ -296,7 +299,9 @@ class LockAnimation:
                         continue
                         
             # Schedule next animation frame
-            self.canvas.after(20, self._animate_particles)
+            if self.is_active:
+                new_after_id = self.canvas.after(30, self._animate_particles)
+                self.after_ids['animate_particles'] = new_after_id
                 
         except tk.TclError:
             # Canvas might be gone
@@ -740,7 +745,7 @@ class LockAnimation:
             new_color = unlock_colors[row_index % len(unlock_colors)]
             
             # Shake effect - jiggle particles outward then inward
-            self._shake_particles(intensity=1.5)  # Increased intensity
+            self._shake_particles(intensity=0.2)  # Reduced intensity further from 0.5
             
             # Color burst - change nearby particles to the completion color
             self._color_burst(row_index, new_color)
@@ -762,13 +767,13 @@ class LockAnimation:
             segment_info = self.original_segment_positions[row_index]
             center_y = (segment_info[0] + segment_info[1]) / 2
             
-            # Create multiple explosions for a more dramatic effect
-            self._create_completion_explosion(self.x, center_y, new_color)
-            self.canvas.after(150, lambda: self._create_completion_explosion(self.x - self.size/4, center_y, new_color))
-            self.canvas.after(300, lambda: self._create_completion_explosion(self.x + self.size/4, center_y, new_color))
+            # Create a single, smaller explosion for a less dramatic effect
+            self._create_completion_explosion(self.x, center_y, new_color, num_particles_explosion=3) # Reduced from 6
+            # self.canvas.after(150, lambda: self._create_completion_explosion(self.x - self.size/4, center_y, new_color))
+            # self.canvas.after(300, lambda: self._create_completion_explosion(self.x + self.size/4, center_y, new_color))
             
-            # Create circular wave pattern of particles
-            self._create_circular_wave_pattern(self.x, center_y, new_color)
+            # Create circular wave pattern of particles - reduced waves and particles
+            self._create_circular_wave_pattern(self.x, center_y, new_color, num_waves_override=1, particles_per_wave_override=4) # Reduced particles from 8
             
             # Display row number as character formation
             # Convert to numeric character ('1' through '4')
@@ -777,7 +782,7 @@ class LockAnimation:
         except (tk.TclError, Exception) as e:
             print(f"Error in particle reaction: {e}")
     
-    def _create_circular_wave_pattern(self, center_x, center_y, color):
+    def _create_circular_wave_pattern(self, center_x, center_y, color, num_waves_override=None, particles_per_wave_override=None):
         """Create expanding circular waves of particles when a row is completed"""
         try:
             # Generate complementary colors for the wave particles
@@ -796,26 +801,27 @@ class LockAnimation:
             wave_colors = [color, complementary_color, '#FFFFFF']
             
             # Create multiple waves with different timing
-            num_waves = 3
+            num_waves = num_waves_override if num_waves_override is not None else 1 # Reduced from 3, allow override
             for wave_idx in range(num_waves):
                 # Schedule each wave to start with a delay
-                delay = wave_idx * 200  # ms between waves
+                delay = wave_idx * 150  # Reduced delay from 200ms
                 self.canvas.after(delay, lambda idx=wave_idx: self._start_wave(
-                    center_x, center_y, idx, num_waves, wave_colors))
+                    center_x, center_y, idx, num_waves, wave_colors, particles_per_wave_override=particles_per_wave_override))
                 
         except Exception as e:
             print(f"Error creating circular wave: {e}")
     
-    def _start_wave(self, center_x, center_y, wave_idx, total_waves, colors):
+    def _start_wave(self, center_x, center_y, wave_idx, total_waves, colors, particles_per_wave_override=None):
         """Start a single circular wave of particles"""
         try:
             if not self.canvas.winfo_exists():
                 return
                 
             # Parameters for this wave
-            num_particles = 16 + wave_idx * 4  # More particles in later waves
-            radius = self.size * 0.2 * (wave_idx + 1)  # Starting radius increases with wave index
-            max_radius = self.size * (1.0 + 0.3 * wave_idx)  # Maximum radius increases with wave index
+            # Reduced particle count by ~70%
+            num_particles = particles_per_wave_override if particles_per_wave_override is not None else (5 + wave_idx * 2)  # Reduced from 16 + wave_idx * 4
+            radius = self.size * 0.15 * (wave_idx + 1)  # Adjusted starting radius from 0.2
+            max_radius = self.size * (0.7 + 0.2 * wave_idx)  # Adjusted max radius from 1.0 + 0.3
             
             # Create particles distributed evenly around the circle
             wave_particles = []
@@ -1036,11 +1042,12 @@ class LockAnimation:
         except Exception as e:
             print(f"Error in color burst: {e}")
     
-    def _create_completion_explosion(self, x, y, color):
+    def _create_completion_explosion(self, x, y, color, num_particles_explosion=None):
         """Create an explosion effect when a row is completed"""
         try:
-            # Create 20 flying particles
-            for _ in range(20):
+            # Create flying particles, allow override for number of particles
+            num_to_create = num_particles_explosion if num_particles_explosion is not None else 3 # Default to 3, reduced from 6
+            for _ in range(num_to_create):
                 # Random angle and speed
                 angle = random.uniform(0, 2 * math.pi)
                 speed = random.uniform(2, 6)
@@ -1218,185 +1225,178 @@ class LockAnimation:
         self._expand_lock_cells(0, 10, expansion_per_segment)
         
     def _expand_lock_cells(self, step, max_steps, total_expansion):
-        """Animate the lock cells expanding over time"""
+        if not self.is_active or not self.canvas.winfo_exists():
+            return
+
         if step >= max_steps:
             return
+
+        progress = self._ease_in_out(step / max_steps)
+        current_expansion = total_expansion * progress
+
+        for i in range(self.total_parts):
+            # Defensive check (ensured)
+            if i >= len(self.lock_parts_items) or i >= len(self.original_segment_positions):
+                logging.warning(f"_expand_lock_cells: Index {i} out of bounds for lock_parts_items ({len(self.lock_parts_items)}) or original_segment_positions ({len(self.original_segment_positions)}).")
+                continue
+
+            segment_item = self.lock_parts_items[i]
+            original_top, original_bottom = self.original_segment_positions[i]
             
-        try:
-            # Calculate expansion percentage for this step
-            # Use easeOutElastic-like effect for a bouncy look
-            progress = step / max_steps
-            # This gives a nice bouncy effect
-            elastic_progress = 1 + (math.sin(-13 * (progress + 1) * math.pi/2) * math.pow(2, -10 * progress))
-            current_expansion = total_expansion * elastic_progress
-            
-            # Ensure canvas is tall enough to accommodate expansion
-            # Get current canvas dimensions
-            canvas_width = self.canvas.winfo_width()
-            canvas_height = self.canvas.winfo_height()
-            
-            # Calculate how much extra space we need at the top
-            extra_top_space = current_expansion * self.unlocked_parts * 1.5  # Add extra margin
-            
-            # If we need more space, adjust canvas configuration
-            # This should be handled by the parent, but we can make sure the lock stays visible
-            # by adjusting our drawing positions
-            
-            # First, let's calculate a safe offset for all elements
-            safe_offset = max(0, extra_top_space - self.y + self.size // 2)
-            
-            # Reposition all segments based on their original positions
-            for i in range(self.total_parts):
-                segment_item = self.lock_parts_items[i]
-                orig_top, orig_bottom = self.original_segment_positions[i]
+            # When expanding upwards, we need to move segments above the current one
+            # So segments with index < unlocked_parts need to move up
+            if i < self.unlocked_parts:
+                # Higher segments move up more (reversed from expanding downward)
+                # The first segment (i=0) should move the most, last segment the least
+                # Use (self.unlocked_parts - i - 1) to get the right ordering
+                additional_gap = current_expansion * (self.unlocked_parts - i)
                 
-                # When expanding upwards, we need to move segments above the current one
-                # So segments with index < unlocked_parts need to move up
-                if i < self.unlocked_parts:
-                    # Higher segments move up more (reversed from expanding downward)
-                    # The first segment (i=0) should move the most, last segment the least
-                    # Use (self.unlocked_parts - i - 1) to get the right ordering
-                    additional_gap = current_expansion * (self.unlocked_parts - i)
-                    
-                    # Move upward (negative Y direction), ensure we don't go off canvas
-                    # Get current coords
-                    coords = self.canvas.coords(segment_item)
-                    left, _, right, _ = coords
-                    
-                    # Update with new top/bottom positions (move upward)
-                    new_top = max(5, orig_top - additional_gap + safe_offset)  # Ensure stays on canvas
-                    new_bottom = orig_bottom - additional_gap + safe_offset
-                    
-                    self.canvas.coords(segment_item,
-                        left, new_top,
-                        right, new_bottom
-                    )
-                else:
-                    # For segments not moving up, just ensure they're properly positioned
-                    # considering the safe offset
-                    coords = self.canvas.coords(segment_item)
-                    left, _, right, _ = coords
-                    self.canvas.coords(segment_item,
-                        left, orig_top + safe_offset,
-                        right, orig_bottom + safe_offset
-                    )
-            
-            # Also update diagonal arms between segments
-            for i in range(self.total_parts):
-                # Only adjust arms for unlocked segments
-                if i > 0 and i <= self.unlocked_parts:
-                    arm_idx = i - 1  # Arms are offset by 1 from segments
-                    if arm_idx < len(self.diagonal_arms):
-                        arm_item = self.diagonal_arms[arm_idx]
-                        piston_item = self.arm_pistons[arm_idx]
-                        
-                        # Calculate connecting points
-                        # If current segment (i) and previous segment (i-1) are both unlocked,
-                        # need to account for both moving
-                        current_gap = current_expansion * (self.unlocked_parts - i) if i < self.unlocked_parts else 0
-                        prev_gap = current_expansion * (self.unlocked_parts - i + 1) if i - 1 < self.unlocked_parts else 0
-                        
-                        # Get original positions with safe offset
-                        prev_bottom = self.original_segment_positions[i-1][1] - prev_gap + safe_offset
-                        curr_top = self.original_segment_positions[i][0] - current_gap + safe_offset
-                        
-                        # Update diagonal arm coordinates
-                        arm_start_x = self.x - self.size // 6
-                        arm_start_y = prev_bottom
-                        arm_end_x = self.x + self.size // 6
-                        arm_end_y = curr_top
-                        
-                        self.canvas.coords(arm_item,
-                            arm_start_x, arm_start_y,
-                            arm_end_x, arm_end_y
-                        )
-                        
-                        # Update piston position to remain in the middle of the arm
-                        piston_x = (arm_start_x + arm_end_x) / 2
-                        piston_y = (arm_start_y + arm_end_y) / 2
-                        piston_radius = self.size // 18  # Match the size in _animate_piston_release
-                        
-                        self.canvas.coords(piston_item,
-                            piston_x - piston_radius, piston_y - piston_radius,
-                            piston_x + piston_radius, piston_y + piston_radius
-                        )
-            
-            # Update the lock body and shackle
-            if self.unlocked_parts > 0:
-                # Calculate how much to move the top of the lock up
-                # The more segments unlocked, the more we move up
-                top_expansion = current_expansion * self.unlocked_parts
+                # Move upward (negative Y direction), ensure we don't go off canvas
+                # Get current coords
+                coords = self.canvas.coords(segment_item)
+                left, _, right, _ = coords
                 
-                # Update the lock body - stretch upward, with safe offset
-                body_coords = self.canvas.coords(self.lock_body_item)
-                left, top, right, bottom = body_coords
-                new_top = max(5, top - top_expansion + safe_offset)  # Ensure top stays on canvas
-                new_bottom = bottom + safe_offset
-                self.canvas.coords(self.lock_body_item,
-                    left, new_top, right, new_bottom
+                # Update with new top/bottom positions (move upward)
+                new_top = max(5, original_top - additional_gap)  # Ensure stays on canvas
+                new_bottom = original_bottom - additional_gap
+                
+                self.canvas.coords(segment_item,
+                    left, new_top,
+                    right, new_bottom
                 )
-                
-                # Update the glow around the lock body
-                glow_padding = self.size // 8
-                glow_coords = self.canvas.coords(self.glow_item)
-                _, _, _, glow_bottom = glow_coords
-                self.canvas.coords(self.glow_item,
-                    self.x - self.size // 2 - glow_padding, 
-                    max(5, self.y - self.size // 2 - glow_padding * 1.5 - top_expansion + safe_offset),
-                    self.x + self.size // 2 + glow_padding, 
-                    glow_bottom + safe_offset
+            else:
+                # For segments not moving up, just ensure they're properly positioned
+                # considering the safe offset
+                coords = self.canvas.coords(segment_item)
+                left, _, right, _ = coords
+                self.canvas.coords(segment_item,
+                    left, original_top,
+                    right, original_bottom
                 )
-                
-                # Move the shackle and its fill
-                if self.shackle_item and self.shackle_fill:
-                    # Get current coordinates
-                    shackle_coords = self.canvas.coords(self.shackle_item)
-                    shackle_fill_coords = self.canvas.coords(self.shackle_fill)
+        
+        # Also update diagonal arms between segments
+        for i in range(self.total_parts):
+            # Only adjust arms for unlocked segments
+            if i > 0 and i <= self.unlocked_parts:
+                arm_idx = i - 1  # Arms are offset by 1 from segments
+                if arm_idx < len(self.diagonal_arms):
+                    arm_item = self.diagonal_arms[arm_idx]
+                    piston_item = self.arm_pistons[arm_idx]
                     
-                    # Update shackle position - move upward with lock
-                    if len(shackle_coords) >= 4:  # Ensure we have valid coordinates
-                        x1, y1, x2, y2 = shackle_coords[:4]
-                        new_y1 = max(5, y1 - top_expansion + safe_offset)
-                        new_y2 = y2 - top_expansion + safe_offset
-                        self.canvas.coords(self.shackle_item, x1, new_y1, x2, new_y2)
-                    if len(shackle_fill_coords) >= 4:  # Ensure we have valid coordinates
-                        x1, y1, x2, y2 = shackle_fill_coords[:4]
-                        new_y1 = max(5, y1 - top_expansion + safe_offset)
-                        new_y2 = y2 - top_expansion + safe_offset
-                        self.canvas.coords(self.shackle_fill, x1, new_y1, x2, new_y2)
-                
-                # Move the highlight
-                if self.highlight_item:
-                    highlight_coords = self.canvas.coords(self.highlight_item)
-                    if len(highlight_coords) >= 4:
-                        x1, y1, x2, y2 = highlight_coords
-                        new_y1 = max(5, y1 - top_expansion + safe_offset)
-                        new_y2 = y2 - top_expansion + safe_offset
-                        self.canvas.coords(self.highlight_item, x1, new_y1, x2, new_y2)
-                
-                # Move the keyhole
-                if self.keyhole_top and self.keyhole_bottom:
-                    keyhole_top_coords = self.canvas.coords(self.keyhole_top)
-                    keyhole_bottom_coords = self.canvas.coords(self.keyhole_bottom)
+                    # Calculate connecting points
+                    # If current segment (i) and previous segment (i-1) are both unlocked,
+                    # need to account for both moving
+                    current_gap = current_expansion * (self.unlocked_parts - i) if i < self.unlocked_parts else 0
+                    prev_gap = current_expansion * (self.unlocked_parts - i + 1) if i - 1 < self.unlocked_parts else 0
                     
-                    if len(keyhole_top_coords) >= 4:
-                        x1, y1, x2, y2 = keyhole_top_coords
-                        new_y1 = max(5, y1 - top_expansion + safe_offset)
-                        new_y2 = y2 - top_expansion + safe_offset
-                        self.canvas.coords(self.keyhole_top, x1, new_y1, x2, new_y2)
+                    # Get original positions with safe offset
+                    prev_bottom = self.original_segment_positions[i-1][1] - prev_gap
+                    curr_top = self.original_segment_positions[i][0] - current_gap
                     
-                    if len(keyhole_bottom_coords) >= 4:
-                        x1, y1, x2, y2 = keyhole_bottom_coords
-                        new_y1 = max(5, y1 - top_expansion + safe_offset)
-                        new_y2 = y2 - top_expansion + safe_offset
-                        self.canvas.coords(self.keyhole_bottom, x1, new_y1, x2, new_y2)
+                    # Update diagonal arm coordinates
+                    arm_start_x = self.x - self.size // 6
+                    arm_start_y = prev_bottom
+                    arm_end_x = self.x + self.size // 6
+                    arm_end_y = curr_top
+                    
+                    self.canvas.coords(arm_item,
+                        arm_start_x, arm_start_y,
+                        arm_end_x, arm_end_y
+                    )
+                    
+                    # Update piston position to remain in the middle of the arm
+                    piston_x = (arm_start_x + arm_end_x) / 2
+                    piston_y = (arm_start_y + arm_end_y) / 2
+                    piston_radius = self.size // 18  # Match the size in _animate_piston_release
+                    
+                    self.canvas.coords(piston_item,
+                        piston_x - piston_radius, piston_y - piston_radius,
+                        piston_x + piston_radius, piston_y + piston_radius
+                    )
+        
+        # Update the lock body and shackle
+        if self.unlocked_parts > 0:
+            # Calculate how much to move the top of the lock up
+            # The more segments unlocked, the more we move up
+            top_expansion = current_expansion * self.unlocked_parts
             
-            # Schedule next animation step
-            self.canvas.after(30, lambda: self._expand_lock_cells(step+1, max_steps, total_expansion))
+            # Update the lock body - stretch upward, with safe offset
+            body_coords = self.canvas.coords(self.lock_body_item)
+            left, body_orig_top, right, body_orig_bottom = body_coords # Assuming these are the initial coords
+            # The lock body itself does not have original_segment_positions, so we work from its current or initial state.
+            # For simplicity, we adjust relative to the current top_expansion.
+            # The goal is that as segments separate, the main lock body might appear to stretch or shift.
+            # This part needs careful review of original intent vs. current structure.
+            # For now, let's assume the body top moves up with top_expansion
+            new_body_top = max(5, body_orig_top - top_expansion) 
+            # The bottom of the body might not change, or it might stretch. 
+            # Let's assume it doesn't change relative to its initial position for now to avoid overcomplicating.
+            self.canvas.coords(self.lock_body_item, left, new_body_top, right, body_orig_bottom)
+
+            glow_padding = self.size // 8
+            # Glow should also move with the body top
+            # Initial glow position is relative to self.x, self.y, self.size.
+            # This needs to be re-evaluated based on how self.y is defined (center or top of lock body)
+            # Assuming self.y is the center of the main lock structure (excluding shackle initially)
+            initial_glow_top = self.y - self.size // 2 - glow_padding * 1.5
+            new_glow_top = max(5, initial_glow_top - top_expansion)
+            self.canvas.coords(self.glow_item,
+                self.x - self.size // 2 - glow_padding, 
+                new_glow_top,
+                self.x + self.size // 2 + glow_padding, 
+                self.y + self.size // 2 + glow_padding) # Assuming bottom of glow does not change relative to self.y+size/2
+
+            # Move the shackle and its fill
+            if self.shackle_item and self.shackle_fill:
+                # Get current coordinates
+                shackle_coords = self.canvas.coords(self.shackle_item)
+                shackle_fill_coords = self.canvas.coords(self.shackle_fill)
                 
-        except tk.TclError:
-            pass
+                # Update shackle position - move upward with lock
+                if len(shackle_coords) >= 4:  # Ensure we have valid coordinates
+                    x1, y1, x2, y2 = shackle_coords[:4]
+                    new_y1 = max(5, y1 - top_expansion)
+                    new_y2 = y2 - top_expansion
+                    self.canvas.coords(self.shackle_item, x1, new_y1, x2, new_y2)
+                if len(shackle_fill_coords) >= 4:  # Ensure we have valid coordinates
+                    x1, y1, x2, y2 = shackle_fill_coords[:4]
+                    new_y1 = max(5, y1 - top_expansion)
+                    new_y2 = y2 - top_expansion
+                    self.canvas.coords(self.shackle_fill, x1, new_y1, x2, new_y2)
             
+            # Move the highlight
+            if self.highlight_item:
+                highlight_coords = self.canvas.coords(self.highlight_item)
+                if len(highlight_coords) >= 4:
+                    x1, y1, x2, y2 = highlight_coords
+                    new_y1 = max(5, y1 - top_expansion)
+                    new_y2 = y2 - top_expansion
+                    self.canvas.coords(self.highlight_item, x1, new_y1, x2, new_y2)
+            
+            # Move the keyhole
+            if self.keyhole_top and self.keyhole_bottom:
+                keyhole_top_coords = self.canvas.coords(self.keyhole_top)
+                keyhole_bottom_coords = self.canvas.coords(self.keyhole_bottom)
+                
+                if len(keyhole_top_coords) >= 4:
+                    x1, y1, x2, y2 = keyhole_top_coords
+                    new_y1 = max(5, y1 - top_expansion)
+                    new_y2 = y2 - top_expansion
+                    self.canvas.coords(self.keyhole_top, x1, new_y1, x2, new_y2)
+                
+                if len(keyhole_bottom_coords) >= 4:
+                    x1, y1, x2, y2 = keyhole_bottom_coords
+                    new_y1 = max(5, y1 - top_expansion)
+                    new_y2 = y2 - top_expansion
+                    self.canvas.coords(self.keyhole_bottom, x1, new_y1, x2, new_y2)
+        
+        # Schedule next animation step
+        if self.is_active:
+            # Create a unique key for each scheduled call if parameters change
+            key = f'_expand_lock_cells_step_{step}' 
+            new_after_id = self.canvas.after(30, lambda s=step: self._expand_lock_cells(s + 1, max_steps, total_expansion))
+            self.after_ids[key] = new_after_id
+    
     def _animate_diagonal_arm_release(self, arm_idx):
         """Animate the diagonal arm with a piston release effect"""
         if arm_idx < 0 or arm_idx >= len(self.diagonal_arms):
@@ -1417,10 +1417,30 @@ class LockAnimation:
         self._animate_piston_release(piston, diag_arm, 0, 10)
         
     def _animate_piston_release(self, piston, arm, step, max_steps):
-        """Animate piston release with extending/retracting motion"""
-        if step >= max_steps:
+        if not self.is_active or not self.canvas.winfo_exists():
             return
-            
+
+        if step >= max_steps:
+            try:
+                if self.canvas.winfo_exists():
+                    self.canvas.itemconfig(arm, state='normal', fill='#AAB7B8')
+                    self.canvas.itemconfig(piston, fill='#BDC3C7')
+            except tk.TclError: pass
+            return
+
+        arm_coords = self.canvas.coords(arm)
+        # Defensive check (ensured)
+        if not arm_coords or len(arm_coords) != 4:
+            logging.warning(f"_animate_piston_release: Invalid arm_coords {arm_coords} for arm {arm}. Skipping animation frame.")
+            try:
+                if self.canvas.winfo_exists():
+                    self.canvas.itemconfig(arm, state='normal', fill='#AAB7B8')
+                    self.canvas.itemconfig(piston, fill='#BDC3C7')
+            except tk.TclError: pass
+            return
+        
+        arm_start_x, arm_start_y, arm_end_x, arm_end_y = arm_coords
+        
         try:
             # Calculate percentage of animation (0 to 1 to 0)
             if step < max_steps / 2:
@@ -1430,10 +1450,6 @@ class LockAnimation:
                 # Second half: retract
                 percent = (max_steps - step) / (max_steps / 2)
                 
-            # Get arm coordinates
-            arm_coords = self.canvas.coords(arm)
-            arm_start_x, arm_start_y, arm_end_x, arm_end_y = arm_coords
-            
             # Calculate midpoint
             mid_x = (arm_start_x + arm_end_x) / 2
             mid_y = (arm_start_y + arm_end_y) / 2
@@ -1471,8 +1487,10 @@ class LockAnimation:
                 self.canvas.itemconfig(arm, width=arm_width)
             
             # Schedule next step
-            self.canvas.after(50, lambda: self._animate_piston_release(
-                piston, arm, step + 1, max_steps))
+            if self.is_active:
+                key = f'_animate_piston_release_p{piston}_a{arm}_s{step}'
+                new_after_id = self.canvas.after(50, lambda p=piston, a=arm, s=step: self._animate_piston_release(p, a, s + 1, max_steps))
+                self.after_ids[key] = new_after_id
                 
         except tk.TclError:
             pass
@@ -1548,8 +1566,10 @@ class LockAnimation:
             pass
             
     def _move_shackle_up(self, fill_item, outline_item, distance, steps_left, delay=30):
-        """Move the shackle upward in steps"""
-        if steps_left <= 0 or not self.canvas.winfo_exists():
+        if not self.is_active or not self.canvas.winfo_exists():
+            return
+        
+        if steps_left <= 0:
             return
             
         try:
@@ -1565,6 +1585,11 @@ class LockAnimation:
         except tk.TclError:
             pass
             
+        if self.is_active:
+            key = f'_move_shackle_up_f{fill_item}_o{outline_item}_sl{steps_left}'
+            new_after_id = self.canvas.after(delay, lambda fi=fill_item, oi=outline_item, sl=steps_left: self._move_shackle_up(fi, oi, distance, sl - 1, delay))
+            self.after_ids[key] = new_after_id
+    
     def _create_radiating_circles(self):
         """Create expanding circles animation from the center of the lock"""
         try:
@@ -1598,15 +1623,12 @@ class LockAnimation:
             pass
             
     def _expand_circle(self, circle_id, radius, max_radius, color, alpha=1.0):
-        """Expand a circle with fading effect"""
-        if not self.canvas.winfo_exists() or radius > max_radius or alpha <= 0.1:
-            try:
-                self.canvas.delete(circle_id)
-                self.animation_items.remove(circle_id)
-            except (tk.TclError, ValueError):
-                pass
+        if not self.is_active or not self.canvas.winfo_exists():
             return
-            
+        
+        if radius >= max_radius:
+            return
+        
         try:
             # Update circle size
             self.canvas.coords(
@@ -1631,8 +1653,10 @@ class LockAnimation:
             self.canvas.itemconfig(circle_id, outline=new_color)
             
             # Schedule next expansion
-            self.canvas.after(30, lambda: self._expand_circle(
-                circle_id, radius + 2, max_radius, color, new_alpha))
+            if self.is_active:
+                key = f'_expand_circle_{circle_id}_r{radius:.2f}' # Radius can be float
+                new_after_id = self.canvas.after(30, lambda c_id=circle_id, r=radius, mr=max_radius, col=color, al=new_alpha: self._expand_circle(c_id, r + 2, mr, col, al))
+                self.after_ids[key] = new_after_id
                 
         except tk.TclError:
             pass
@@ -1675,8 +1699,10 @@ class LockAnimation:
         return self.canvas.create_polygon(coords, fill=color, outline='', tags="celebration_anim")
         
     def _animate_star(self, star_id, dx, dy, frame, max_frames):
-        """Animate a star floating up and rotating"""
-        if frame >= max_frames or not self.canvas.winfo_exists():
+        if not self.is_active or not self.canvas.winfo_exists():
+            return
+
+        if frame >= max_frames:
             try:
                 self.canvas.delete(star_id)
                 if star_id in self.animation_items:
@@ -1719,7 +1745,11 @@ class LockAnimation:
                 self.canvas.itemconfig(star_id, fill=fade_color)
             
             # Next frame
-            self.canvas.after(30, lambda: self._animate_star(star_id, dx, dy, frame + 1, max_frames))
+            if self.is_active:
+                key = f'_animate_star_{star_id}_f{frame}'
+                new_after_id = self.canvas.after(30, lambda s_id=star_id, x=dx, y=dy, f=frame: self._animate_star(s_id, x, y, f + 1, max_frames))
+                self.after_ids[key] = new_after_id
+                
         except tk.TclError:
             pass
             
@@ -1749,8 +1779,10 @@ class LockAnimation:
             pass
                 
     def _orbit_sparkle(self, sparkle_id, angle, radius, frame, max_frames):
-        """Animate a sparkle orbiting around the lock center"""
-        if frame >= max_frames or not self.canvas.winfo_exists():
+        if not self.is_active or not self.canvas.winfo_exists():
+            return
+
+        if frame >= max_frames:
             try:
                 self.canvas.delete(sparkle_id)
                 if sparkle_id in self.animation_items:
@@ -1787,8 +1819,11 @@ class LockAnimation:
             )
             
             # Next frame
-            self.canvas.after(30, lambda: self._orbit_sparkle(
-                sparkle_id, new_angle, radius, frame + 1, max_frames))
+            if self.is_active:
+                key = f'_orbit_sparkle_{sparkle_id}_f{frame}'
+                new_after_id = self.canvas.after(50, lambda s_id=sparkle_id, ang=new_angle, rad=radius, f=frame: self._orbit_sparkle(s_id, ang, rad, f + 1, max_frames))
+                self.after_ids[key] = new_after_id
+                
         except tk.TclError:
             pass
 
@@ -1838,7 +1873,8 @@ class LockAnimation:
         
         sparkle_colors = ['#F1C40F', '#F39C12', '#FFEB3B', '#FFC107', '#FFFFFF']  # Yellow/gold colors + white
         
-        for _ in range(12):  # Increased number of sparkles
+        # Reduced number of sparkles by ~70%
+        for _ in range(2):  # Reduced from 4
             angle = random.uniform(0, 2 * math.pi)
             # Sparkles should emanate from the segment's center
             distance = random.uniform(2, 10)  # Initial distance from center
@@ -1948,7 +1984,21 @@ class LockAnimation:
             pass
     
     def clear_visuals(self):
-        """Deletes all visual elements of the lock from the canvas."""
+        """Clear all visual elements of the lock and its animations from the canvas."""
+        self.is_active = False # SET TO FALSE FIRST
+        
+        # Cancel all scheduled .after() calls for this instance
+        for after_id_key in list(self.after_ids.keys()): # Iterate over keys copy for safe modification
+            after_id_val = self.after_ids.pop(after_id_key, None) # Use pop to remove and get value
+            if after_id_val:
+                try:
+                    self.canvas.after_cancel(after_id_val)
+                except Exception as e:
+                    logging.warning(f"Error cancelling after_id {after_id_val} for key {after_id_key}: {e}")
+        # self.after_ids should be empty now due to pop, but clear just in case.
+        self.after_ids.clear()
+
+        # Delete general animation items
         try:
             # More robust way using the common tag for all lock visuals
             self.canvas.delete("lock_visual")
