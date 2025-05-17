@@ -10,6 +10,7 @@ from src.ui_components.feedback_manager import FeedbackManager # Added import
 from lock_animation import LockAnimation # Import the lock animation class
 from error_animation import ErrorAnimation # Import the new error animation class
 from falling_symbols import FallingSymbols # Import the falling symbols manager
+from WormsWindow_B import WormAnimation # Import the worm animation class
 
 # Import the problem sets from the module files
 try:
@@ -421,6 +422,10 @@ class GameplayScreen(tk.Toplevel):
         self.lock_animation = None # Placeholder for LockAnimation instance
         self.error_animation = None # Placeholder for ErrorAnimation instance
         self.falling_symbols = None # Placeholder for FallingSymbols instance
+        self.worm_animation = None # Placeholder for WormAnimation instance
+        
+        # Track solution symbol data for worms
+        self.solution_symbols = []
         
         # Debug mode to print character details
         self.debug_mode = True
@@ -504,6 +509,182 @@ class GameplayScreen(tk.Toplevel):
 
         # Add a flash_ids dictionary to track animation timers for character flashing
         self.flash_ids = {}
+
+        # Initialize worm animation after other components are ready
+        self.after(500, self._init_worm_animation)
+
+    def _init_worm_animation(self):
+        """Initialize worm animation in Window B"""
+        if not hasattr(self, 'solution_canvas') or not self.solution_canvas.winfo_exists():
+            return
+            
+        # Initialize worm animation with the solution canvas (Window B)
+        # Worm will be created and started later, after first row completion
+        self.worm_animation = WormAnimation(
+            self.solution_canvas,
+            symbol_transport_callback=self.handle_symbol_transport
+        )
+        
+        # Update solution symbols when they change - this can still run
+        self.after(1000, self._update_worm_solution_symbols)  # Initial update after symbols are drawn
+        
+        logging.info("Worm animation object initialized (will start after first row completion)")
+
+    def handle_symbol_transport(self, symbol_id, char):
+        """Handle callback when a worm transports a symbol to Window C"""
+        logging.info(f"Symbol '{char}' (ID: {symbol_id}) transported to Window C")
+        
+        # Find which line and char index this symbol represents
+        transported_symbol = None
+        for symbol in self.solution_symbols:
+            if symbol.get('id') == symbol_id:
+                transported_symbol = symbol
+                break
+                
+        if not transported_symbol:
+            logging.warning(f"Could not find transported symbol with ID {symbol_id}")
+            return
+            
+        line_idx = transported_symbol.get('line_idx')
+        char_idx = transported_symbol.get('char_idx')
+        
+        if line_idx is None or char_idx is None:
+            logging.warning(f"Transported symbol missing line_idx or char_idx")
+            return
+            
+        # Mark the character as hidden in the solution canvas
+        char_tag = f"sol_{line_idx}_{char_idx}"
+        
+        try:
+            # Hide the character (make it white on white)
+            self.solution_canvas.itemconfig(char_tag, fill="#FFFFFF")
+            
+            # Mark it as needing to be reapplied
+            if (line_idx, char_idx) in self.visible_chars:
+                self.visible_chars.remove((line_idx, char_idx))
+                
+            # Create a copy of this character as a falling symbol in Window C
+            if not hasattr(self, 'falling_symbols') or not self.falling_symbols:
+                return
+            
+            # Manually create a new falling symbol
+            x_pos = random.randint(50, self.symbol_canvas.winfo_width() - 50)
+            new_symbol = {
+                'char': char,
+                'x': x_pos,
+                'y': 10,  # Near the top
+                'id': None,
+                'size': 44  # Match the size in FallingSymbols
+            }
+            
+            # Add to falling symbols list
+            self.falling_symbols.falling_symbols_on_screen.append(new_symbol)
+            
+            logging.info(f"Symbol '{char}' added to falling symbols in Window C at position ({x_pos}, 10)")
+            
+        except Exception as e:
+            logging.error(f"Error handling symbol transport: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+    
+    def _update_worm_solution_symbols(self):
+        """Update the list of solution symbols for worm interaction"""
+        if not hasattr(self, 'worm_animation') or not self.worm_animation:
+            return
+            
+        # Skip if no solution steps
+        if not self.current_solution_steps:
+            self.after(1000, self._update_worm_solution_symbols)  # Check again later
+            return
+            
+        # Reset solution symbols list
+        self.solution_symbols = []
+        
+        # Loop through visible characters
+        for line_idx, line in enumerate(self.current_solution_steps):
+            for char_idx, char in enumerate(line):
+                if (line_idx, char_idx) in self.visible_chars:
+                    # Character is visible, get its canvas ID and position
+                    char_tag = f"sol_{line_idx}_{char_idx}"
+                    
+                    try:
+                        # Get item ID by tag
+                        items = self.solution_canvas.find_withtag(char_tag)
+                        if not items:
+                            continue
+                            
+                        symbol_id = items[0]
+                        
+                        # Get position of the character
+                        bbox = self.solution_canvas.bbox(symbol_id)
+                        if not bbox:
+                            continue
+                            
+                        # Calculate center position
+                        x = (bbox[0] + bbox[2]) / 2
+                        y = (bbox[1] + bbox[3]) / 2
+                        
+                        # Add to solution symbols list
+                        self.solution_symbols.append({
+                            'id': symbol_id,
+                            'position': (x, y),
+                            'char': char,
+                            'line_idx': line_idx,
+                            'char_idx': char_idx,
+                            'visible': True
+                        })
+                        
+                    except Exception as e:
+                        logging.error(f"Error getting symbol data: {e}")
+        
+        # Update worm animation with current symbols
+        self.worm_animation.update_solution_symbols(self.solution_symbols)
+        
+        # Schedule next update
+        self.after(2000, self._update_worm_solution_symbols)  # Update every 2 seconds
+    
+    def _check_if_step_complete(self, line_idx):
+        """Check if a solution step is now complete and handle lock animation update if needed"""
+        try:
+            current_line = self.current_solution_steps[line_idx]
+            step_is_now_complete = all((line_idx, char_idx) in self.visible_chars for char_idx in range(len(current_line)))
+            
+            # If step is complete and we haven't processed it yet
+            if step_is_now_complete and line_idx not in self.completed_line_indices_for_problem:
+                self.completed_line_indices_for_problem.add(line_idx)
+                
+                # Trigger worm speed boost when a line is completed
+                if hasattr(self, 'worm_animation') and self.worm_animation:
+                    # If worm animation is running, call on_step_complete
+                    if self.worm_animation.animation_running:
+                        self.worm_animation.on_step_complete()
+                    
+                    # Only start worm and transport timer after first row is complete
+                    if len(self.completed_line_indices_for_problem) == 1:
+                        logging.info("First row completed - starting worm animation and scheduling first symbol transport in 10 seconds")
+                        # Start the worm animation if not already started
+                        if not self.worm_animation.animation_running:
+                            self.worm_animation.start_animation(1) # Start with 1 worm
+                            
+                        # Schedule first transport in 10 seconds
+                        self.after(10000, lambda: self._start_transport_timer())
+                
+                # Debug output
+                if self.debug_mode:
+                    num_distinct_completed_steps = len(self.completed_line_indices_for_problem)
+                    logging.debug(f"Step {line_idx} is now complete. Total completed steps: {num_distinct_completed_steps}")
+        except Exception as e:
+            logging.error(f"Error checking step completion: {e}")
+            
+    def _start_transport_timer(self):
+        """Start the symbol transport timer in the worm animation"""
+        if hasattr(self, 'worm_animation') and self.worm_animation and self.worm_animation.animation_running:
+            # Manually trigger the first transport
+            self.worm_animation._transport_random_symbol()
+            
+            # Start the automatic timer for future transports
+            self.worm_animation._schedule_symbol_transport()
+            logging.info("Symbol transport timer started")
 
     def on_resize(self, event):
         """Handle window resize"""
@@ -805,6 +986,10 @@ class GameplayScreen(tk.Toplevel):
             # Clear previous texts and markers
             self.solution_canvas.delete("solution_text")
             self.solution_canvas.delete("line_marker")
+
+            # Notify worm animation about canvas redraw to clear its state related to old symbol IDs/glows
+            if hasattr(self, 'worm_animation') and self.worm_animation:
+                self.worm_animation.handle_solution_canvas_redraw()
             
             canvas_width = self.solution_canvas.winfo_width()
             canvas_height = self.solution_canvas.winfo_height()
@@ -1163,23 +1348,6 @@ class GameplayScreen(tk.Toplevel):
             logging.error(f"[reveal_char] Critical error in reveal_char for ({line_idx}, {char_idx}): {e}")
             traceback.print_exc()
 
-    def _check_if_step_complete(self, line_idx):
-        """Check if a solution step is now complete and handle lock animation update if needed"""
-        try:
-            current_line = self.current_solution_steps[line_idx]
-            step_is_now_complete = all((line_idx, char_idx) in self.visible_chars for char_idx in range(len(current_line)))
-            
-            # If step is complete and we haven't processed it yet
-            if step_is_now_complete and line_idx not in self.completed_line_indices_for_problem:
-                self.completed_line_indices_for_problem.add(line_idx)
-                
-                # Debug output
-                if self.debug_mode:
-                    num_distinct_completed_steps = len(self.completed_line_indices_for_problem)
-                    logging.debug(f"Step {line_idx} is now complete. Total completed steps: {num_distinct_completed_steps}")
-        except Exception as e:
-            logging.error(f"Error checking step completion: {e}")
-            
     def _check_for_lock_visual_update(self):
         """Check if we should update the lock animation based on completed steps"""
         try:
@@ -1215,14 +1383,16 @@ class GameplayScreen(tk.Toplevel):
             
             # Schedule reset back to black after 300ms
             def reset_color():
-                if self.winfo_exists() and flash_id in self.flash_ids:
+                if self.winfo_exists() and flash_id in self.flash_ids: # Check key presence before del
                     try:
                         self.solution_canvas.itemconfig(tag, fill=original_color)
-                        del self.flash_ids[flash_id]
                     except tk.TclError:
-                        pass  # Item might be gone
+                        pass # Item might be gone
+                    finally:
+                        # Always remove the flash_id from tracking once its timer has executed or attempted
+                        del self.flash_ids[flash_id]
                         
-            self.after(300, reset_color)
+            self.flash_ids[flash_id] = self.after(300, reset_color) # Store the timer ID with the unique key
             
         except tk.TclError:
             # Item might be gone already
@@ -1402,6 +1572,10 @@ class GameplayScreen(tk.Toplevel):
         # Play lock victory animation
         if self.lock_animation:
             self.lock_animation.celebrate_problem_solved()
+        
+        # Make worms celebrate too
+        if hasattr(self, 'worm_animation') and self.worm_animation:
+            self.worm_animation.celebrate(duration=5000)
         
         # Remove any cracks from the error animation
         if self.error_animation:
@@ -1607,19 +1781,41 @@ class GameplayScreen(tk.Toplevel):
         if self.falling_symbols:
             self.falling_symbols.stop_animation()
             
+        # Cancel worm animation timer
+        if hasattr(self, 'worm_animation') and self.worm_animation:
+            self.worm_animation.stop_animation()
+            
         # Cancel auto-save timer
         if hasattr(self, 'auto_save_after_id') and self.auto_save_after_id:
             self.after_cancel(self.auto_save_after_id)
             self.auto_save_after_id = None
             
         # Cancel any flash timers
-        for tag, timer_id in self.flash_ids.items():
-            self.after_cancel(timer_id)
-        self.flash_ids.clear()
+        if hasattr(self, 'flash_ids'):
+            for unique_key, timer_id_val in list(self.flash_ids.items()): # Iterate over a copy of items
+                if timer_id_val:
+                    try:
+                        self.after_cancel(timer_id_val)
+                    except Exception as e:
+                        logging.warning(f"Error cancelling flash timer ID {timer_id_val} for key {unique_key}: {e}")
+            self.flash_ids.clear() # Clear all tracked flash timers
         
-        # Save game state before closing
-        if not self.game_over:  # Only save if not game-over (no point saving a completed/failed level)
-            self.save_game_state()
+        # Manage save state more explicitly based on game_over status
+        if self.game_over:
+            # If game was over (e.g., level completed or failed and led to game_over state),
+            # ensure the save file for this attempt is cleared.
+            logging.info(f"Game is over. Clearing save file for level {self.current_level}.")
+            self.clear_saved_game()
+        else:
+            # If game is not over (e.g., user exited mid-game),
+            # save the current state for potential resumption.
+            # Only save if the window still notionally exists (might be overly cautious here as destroy is happening)
+            if self.winfo_exists(): 
+                logging.info(f"Game not over. Saving state for level {self.current_level}.")
+                self.save_game_state()
+            else:
+                # This case should ideally not be hit if destroy() is called on a valid window object
+                logging.info(f"Game not over, but window does not exist. Skipping save for level {self.current_level}.")
             
         # Clear visual elements
         try:

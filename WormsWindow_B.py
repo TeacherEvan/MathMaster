@@ -5,13 +5,15 @@ import time
 import logging
 
 class WormAnimation:
-    def __init__(self, canvas, canvas_width=None, canvas_height=None):
+    def __init__(self, canvas, canvas_width=None, canvas_height=None, symbol_transport_callback=None):
         """Initialize the worm animation on the specified canvas.
         
         Args:
             canvas: The tkinter canvas where the worm will be drawn
             canvas_width: Optional initial width of the canvas
             canvas_height: Optional initial height of the canvas
+            symbol_transport_callback: Callback function when a symbol is transported
+                                      Should accept (symbol_id, char) parameters
         """
         self.canvas = canvas
         self.width = canvas_width or canvas.winfo_width()
@@ -32,6 +34,12 @@ class WormAnimation:
         self.interaction_cooldown = {}  # Cooldown for interactions per worm
         self.symbol_shake_ids = {}  # Track active symbol shake animations
         self.interaction_particles = []  # Particle effects for interactions
+        
+        # Symbol transport functionality (Window B to C)
+        self.symbol_transport_callback = symbol_transport_callback
+        self.transport_timer = None
+        self.transport_interval = 10000  # 10 seconds
+        self.transporting_symbols = {}  # Track symbols being transported
         
         # Bind to canvas resize events
         self.canvas.bind("<Configure>", self.on_canvas_resize)
@@ -223,55 +231,85 @@ class WormAnimation:
             
     def _update_worm(self, worm):
         """Update a single worm's position and appearance"""
-        # Check for interaction with solution symbols if enabled
-        if self.interaction_enabled and self.animation_speed > 1.0:
-            self._check_symbol_interaction(worm)
-        
-        # If worm has a target symbol, move toward it
-        if worm.get('target_symbol') and random.random() < 0.7:  # 70% chance to follow target
-            target_x, target_y = worm['target_symbol']['position']
-            head_x, head_y = worm['history'][0] if worm['history'][0] != (0, 0) else (worm['x'], worm['y'])
+        # If worm is transporting a symbol, prioritize that behavior
+        if worm.get('transport_target'):
+            # Movement is largely handled by _begin_transport_animation during push
+            # Here, we just ensure its mouth stays open and it doesn't wander off too much
+            target_symbol = worm['transport_target']
+            sym_pos_on_canvas = self.canvas.coords(target_symbol.get('id'))
             
-            # Calculate angle to target
-            dx = target_x - head_x
-            dy = target_y - head_y
-            target_angle = math.atan2(dy, dx)
+            if sym_pos_on_canvas:
+                sym_x, sym_y = sym_pos_on_canvas # Current position of symbol being pushed
+                target_x_for_worm = sym_x
+                target_y_for_worm = sym_y + worm['segment_size'] * 1.5
+
+                dx = target_x_for_worm - worm['x']
+                dy = target_y_for_worm - worm['y']
+                target_angle = math.atan2(dy, dx)
+                
+                angle_diff = (target_angle - worm['angle'] + math.pi) % (2 * math.pi) - math.pi
+                worm['angle'] += angle_diff * 0.1 # Gentle turning to stay aligned
+
+            # Speed is controlled by 'speed_multiplier' set in _begin_transport_animation
+            speed = 3 * self.animation_speed * worm.get('speed_multiplier', 1.0)
             
-            # Gradually turn toward target
-            angle_diff = (target_angle - worm['angle'] + math.pi) % (2 * math.pi) - math.pi
-            worm['angle'] += angle_diff * 0.2  # Smooth turning
         else:
-            # Randomly change direction occasionally
-            if random.random() < 0.05:
-                worm['angle'] += random.uniform(-math.pi/4, math.pi/4)
+            # Check for interaction with solution symbols if enabled
+            if self.interaction_enabled and self.animation_speed > 1.0:
+                self._check_symbol_interaction(worm)
             
-        # Apply speed based on animation_speed
-        speed = 3 * self.animation_speed
+            # If worm has a target symbol, move toward it
+            if worm.get('target_symbol') and random.random() < 0.7:  # 70% chance to follow target
+                target_x, target_y = worm['target_symbol']['position']
+                head_x, head_y = worm['history'][0] if worm['history'][0] != (0, 0) else (worm['x'], worm['y'])
+                
+                # Calculate angle to target
+                dx = target_x - head_x
+                dy = target_y - head_y
+                target_angle = math.atan2(dy, dx)
+                
+                # Gradually turn toward target
+                angle_diff = (target_angle - worm['angle'] + math.pi) % (2 * math.pi) - math.pi
+                worm['angle'] += angle_diff * 0.2  # Smooth turning
+            else:
+                # Randomly change direction occasionally
+                if random.random() < 0.05:
+                    worm['angle'] += random.uniform(-math.pi/4, math.pi/4)
+                
+            # Apply speed based on animation_speed
+            speed = 3 * self.animation_speed * worm.get('speed_multiplier', 1.0) # Apply multiplier here too
         
         # Calculate new position
         new_x = worm['x'] + math.cos(worm['angle']) * speed
         new_y = worm['y'] + math.sin(worm['angle']) * speed
         
-        # Bounce off walls
+        # Bounce off walls (less aggressive bouncing if transporting)
         bounced = False
-        if new_x < worm['segment_size'] or new_x > self.width - worm['segment_size']:
-            worm['angle'] = math.pi - worm['angle']
-            bounced = True
-        if new_y < worm['segment_size'] or new_y > self.height - worm['segment_size']:
-            worm['angle'] = -worm['angle']
-            bounced = True
+        wall_margin = worm['segment_size']
+        if not worm.get('transport_target'): # Normal bouncing if not transporting
+            if new_x < wall_margin or new_x > self.width - wall_margin:
+                worm['angle'] = math.pi - worm['angle']
+                bounced = True
+            if new_y < wall_margin or new_y > self.height - wall_margin:
+                worm['angle'] = -worm['angle']
+                bounced = True
+        else: # More constrained movement if transporting to avoid erratic bounces
+            if new_x < wall_margin: new_x = wall_margin; worm['angle'] += math.pi/2
+            if new_x > self.width - wall_margin: new_x = self.width - wall_margin; worm['angle'] += math.pi/2
+            if new_y < wall_margin: new_y = wall_margin; worm['angle'] += math.pi/2
+            if new_y > self.height - wall_margin: new_y = self.height - wall_margin; worm['angle'] += math.pi/2
             
         # Add some wiggle to the movement
-        if not bounced and random.random() < 0.1:
+        if not bounced and random.random() < 0.1 and not worm.get('transport_target'):
             worm['angle'] += random.uniform(-math.pi/8, math.pi/8)
             
         # Update position
-        worm['x'] = worm['x'] + math.cos(worm['angle']) * speed
-        worm['y'] = worm['y'] + math.sin(worm['angle']) * speed
+        worm['x'] = new_x # Use potentially corrected new_x, new_y
+        worm['y'] = new_y
         
-        # Ensure we stay within bounds
-        worm['x'] = max(worm['segment_size'], min(self.width - worm['segment_size'], worm['x']))
-        worm['y'] = max(worm['segment_size'], min(self.height - worm['segment_size'], worm['y']))
+        # Ensure we stay within bounds (redundant if above logic is perfect, but good for safety)
+        worm['x'] = max(wall_margin, min(self.width - wall_margin, worm['x']))
+        worm['y'] = max(wall_margin, min(self.height - wall_margin, worm['y']))
         
         # Update position history
         worm['history'].insert(0, (worm['x'], worm['y']))
@@ -284,11 +322,15 @@ class WormAnimation:
             # Shorter blink, longer open eyes
             worm['blink_timer'] = random.randint(5, 10) if worm['blink_state'] else random.randint(50, 200)
             
-        # Handle mouth animation
-        worm['mouth_timer'] -= 1
-        if worm['mouth_timer'] <= 0:
-            worm['mouth_state'] = 1 - worm['mouth_state']  # Toggle between 0 and 1
-            worm['mouth_timer'] = random.randint(20, 100)
+        # Handle mouth animation if not transporting
+        if not worm.get('transport_target'): # Mouth is controlled by transport logic if transporting
+            worm['mouth_timer'] -= 1
+            if worm['mouth_timer'] <= 0:
+                worm['mouth_state'] = 1 - worm['mouth_state']  # Toggle between 0 and 1
+                worm['mouth_timer'] = random.randint(20, 100)
+            # Reset speed multiplier if it was changed for pushing
+            if 'speed_multiplier' in worm:
+                 del worm['speed_multiplier'] 
             
         # Clear target if worm hasn't reached it in a while
         if worm.get('target_symbol') and random.random() < 0.01:  # Small chance to forget target
@@ -525,8 +567,12 @@ class WormAnimation:
         self.animation_running = True
         self.create_worm(num_worms)
         self.animate()
-        logging.info(f"Started worm animation with {num_worms} worms")
         
+        # Start the symbol transport timer
+        self._schedule_symbol_transport()
+        
+        logging.info(f"Started worm animation with {num_worms} worms")
+    
     def stop_animation(self):
         """Stop the worm animation"""
         self.animation_running = False
@@ -542,8 +588,265 @@ class WormAnimation:
                 except:
                     pass
         self.symbol_shake_ids = {}
+        
+        # Cancel transport timer
+        if self.transport_timer:
+            self.canvas.after_cancel(self.transport_timer)
+            self.transport_timer = None
             
         logging.info("Stopped worm animation")
+    
+    def handle_solution_canvas_redraw(self):
+        """Called when the solution canvas is redrawn, invalidating symbol IDs and positions."""
+        logging.info("WormAnimation: Handling solution canvas redraw. Clearing glows and transport targets.")
+        self._remove_borders_from_solution_symbols() # Clear existing glows
+
+        for worm in self.worms:
+            if worm.get('transport_target'):
+                # The symbol ID and its animation path are now stale.
+                # Ideally, we'd have a way to gracefully stop the self.canvas.after loop in _begin_transport_animation.
+                # For now, clearing the target will prevent new actions based on it.
+                # The existing animation might complete or error if symbol_id is gone from canvas.
+                logging.info(f"Worm {worm['id']} transport target (ID: {worm['transport_target'].get('id', 'N/A')}) cleared due to canvas redraw.")
+                worm['transport_target'] = None
+                worm['mouth_state'] = 0 # Reset mouth
+                # Restore original speed if it was modified for pushing
+                if 'speed_multiplier' in worm and 'original_speed_before_push' in worm:
+                    worm['speed_multiplier'] = worm['original_speed_before_push']
+                elif 'speed_multiplier' in worm: # If original_speed_before_push was somehow not set
+                    del worm['speed_multiplier']
+
+
+            # Clear generic target_symbol as its position data is also stale.
+            if worm.get('target_symbol'):
+                logging.info(f"Worm {worm['id']} generic target symbol cleared due to canvas redraw.")
+                worm['target_symbol'] = None
+
+        # Clear any symbols currently marked as being transported internally by the worm logic
+        self.transporting_symbols.clear()
+
+        # Stop any active shake animations as their symbol IDs are now stale
+        for symbol_id_key, after_id_val in list(self.symbol_shake_ids.items()): # Iterate on a copy
+            if after_id_val:
+                try:
+                    self.canvas.after_cancel(after_id_val)
+                except:
+                    pass # Ignore errors if already cancelled or invalid
+        self.symbol_shake_ids.clear()
+        logging.info("WormAnimation: Cleared active symbol shakes.")
+
+    def _schedule_symbol_transport(self):
+        """Schedule the next symbol transport event"""
+        if not self.animation_running or not self.canvas.winfo_exists():
+            return
+            
+        # Cancel any existing timer
+        if self.transport_timer:
+            self.canvas.after_cancel(self.transport_timer)
+            
+        # Schedule next transport
+        self.transport_timer = self.canvas.after(
+            self.transport_interval, 
+            self._transport_random_symbol
+        )
+    
+    def _transport_random_symbol(self):
+        """Choose a random symbol and transport it from Window B to Window C"""
+        if not self.solution_symbols or not self.worms:
+            # No symbols or worms available
+            self._schedule_symbol_transport()
+            return
+            
+        # Choose a random visible symbol
+        visible_symbols = [s for s in self.solution_symbols 
+                          if not s.get('transported', False) and s.get('visible', True)]
+        
+        if not visible_symbols:
+            # No visible symbols available
+            self._schedule_symbol_transport()
+            return
+            
+        # Select a random symbol
+        symbol = random.choice(visible_symbols)
+        symbol_id = symbol.get('id')
+        
+        if not symbol_id:
+            # Invalid symbol
+            self._schedule_symbol_transport()
+            return
+            
+        # Choose a random worm to perform the transport
+        worm = random.choice(self.worms)
+        
+        # Mark this symbol as being transported
+        symbol['transported'] = True
+        self.transporting_symbols[symbol_id] = symbol
+        
+        # Target the symbol with the worm
+        self._target_symbol_for_transport(worm, symbol)
+        
+        # Schedule the next transport
+        self._schedule_symbol_transport()
+    
+    def _target_symbol_for_transport(self, worm, symbol):
+        """Make a worm target a symbol for transport"""
+        # Store the target
+        worm['transport_target'] = symbol
+        
+        # Make worm open its mouth
+        worm['mouth_state'] = 1
+        worm['mouth_timer'] = 9999  # Keep mouth open until transport complete
+        
+        # Log the event
+        logging.info(f"Worm {worm['id']} targeting symbol {symbol.get('id')} for transport")
+        
+        # Check periodically if worm has reached the symbol
+        self._check_worm_reached_symbol(worm)
+    
+    def _check_worm_reached_symbol(self, worm):
+        """Check if the worm has reached its transport target symbol"""
+        if not self.animation_running or not self.canvas.winfo_exists():
+            return
+            
+        if not worm.get('transport_target'):
+            return
+            
+        # Get head position
+        head_pos = worm['history'][0] if worm['history'][0] != (0, 0) else (worm['x'], worm['y'])
+        head_x, head_y = head_pos
+        
+        # Get symbol position
+        symbol = worm['transport_target']
+        sym_pos = symbol.get('position', (0, 0))
+        sym_x, sym_y = sym_pos
+        
+        # Check distance
+        distance = math.sqrt((head_x - sym_x)**2 + (head_y - sym_y)**2)
+        
+        if distance < worm['segment_size'] * 2:
+            # Worm has reached the symbol
+            self._begin_transport_animation(worm, symbol)
+        else:
+            # Check again in a bit
+            self.canvas.after(100, lambda: self._check_worm_reached_symbol(worm))
+    
+    def _begin_transport_animation(self, worm, symbol):
+        """Begin animating the symbol being transported to Window C"""
+        # Get symbol info
+        symbol_id = symbol.get('id')
+        if not symbol_id:
+            # Clean up and return
+            worm['transport_target'] = None
+            worm['mouth_state'] = 0
+            return
+            
+        try:
+            # Get symbol's current position and the top edge of window
+            sym_pos = self.canvas.coords(symbol_id)
+            if not sym_pos:
+                # Symbol might be gone
+                worm['transport_target'] = None
+                worm['mouth_state'] = 0
+                return
+                
+            # Store initial position
+            start_x, start_y = sym_pos
+            
+            # Target is top of window with same x-coordinate
+            end_y = -50  # Above the visible window
+            
+            # Animation parameters for a gentler push
+            total_steps = 60  # Increased steps for smoother, slower animation
+            current_step = 0
+            
+            # Store original worm speed and reduce for pushing animation
+            original_worm_speed = worm.get('speed_multiplier', 1.0) # Assume default 1.0
+            worm['speed_multiplier'] = 0.3 # Slower speed while pushing
+            worm['original_speed_before_push'] = original_worm_speed # Store it for restoration
+            
+            # Capture the symbol_id at the start of this specific transport task
+            # This is important because worm['transport_target'] might be cleared by an external event (like canvas redraw)
+            original_symbol_id_for_this_task = symbol_id
+            original_char_for_this_task = symbol.get('char', '') # Capture char as well, as 'symbol' dict might become stale if list is rebuilt
+
+            def animate_transport():
+                nonlocal current_step
+                # Check if this transport task has been invalidated by an external event
+                # (e.g., canvas redraw causing worm's target to be cleared or changed)
+                current_worm_target = worm.get('transport_target')
+                if not current_worm_target or current_worm_target.get('id') != original_symbol_id_for_this_task:
+                    logging.info(f"Transport animation for original symbol ID {original_symbol_id_for_this_task} aborted due to target change or clear.")
+                    # Clean up worm state without calling the main callback
+                    worm['mouth_state'] = 0 # Close mouth
+                    worm['speed_multiplier'] = worm.get('original_speed_before_push', 1.0) # Restore speed
+                    # Do not proceed to call symbol_transport_callback
+                    return
+
+                if current_step >= total_steps or not self.canvas.winfo_exists():
+                    # Animation complete - notify callback
+                    if self.symbol_transport_callback:
+                        # Use the originally captured char and symbol_id for the callback
+                        self.symbol_transport_callback(original_symbol_id_for_this_task, original_char_for_this_task)
+                    
+                    # Clean up worm state
+                    worm['transport_target'] = None # Crucial: Ensure target is cleared on completion
+                    
+                    # Remove from lists
+                    if symbol in self.solution_symbols:
+                        self.solution_symbols.remove(symbol)
+                    if symbol_id in self.transporting_symbols:
+                        del self.transporting_symbols[symbol_id]
+                    
+                    return
+                
+                # Calculate new position (linear for gentle push)
+                progress = current_step / total_steps
+                new_y = start_y + (end_y - start_y) * progress # Linear movement
+                
+                try:
+                    # Move the symbol
+                    self.canvas.coords(symbol_id, start_x, new_y)
+                    
+                    # Worm gently nudges the symbol from below
+                    # Worm tries to stay slightly below and aligned with the symbol
+                    worm_target_x = start_x
+                    worm_target_y = new_y + worm['segment_size'] * 1.5 # Position worm below symbol
+
+                    worm_dx = (worm_target_x - worm['x']) * 0.1 # Slower follow
+                    worm_dy = (worm_target_y - worm['y']) * 0.1 # Slower follow
+                    
+                    worm['x'] += worm_dx
+                    worm['y'] += worm_dy
+                    # Update worm's history to reflect this controlled movement
+                    worm['history'].insert(0, (worm['x'], worm['y']))
+                    worm['history'] = worm['history'][:self.worm_segments]
+                    # We might need to redraw the worm here if _update_worm isn't called frequently enough
+                    # during this specific animation loop. For now, assuming main loop handles it.
+                    
+                    # Next step
+                    current_step += 1
+                    self.canvas.after(75, animate_transport) # Slower frame rate for gentler push
+                except tk.TclError:
+                    # Symbol might have been deleted
+                    worm['transport_target'] = None
+                    worm['mouth_state'] = 0
+                    worm['speed_multiplier'] = worm.get('original_speed_before_push', 1.0) # Restore original speed
+                    return
+                    
+            # Start animation
+            animate_transport()
+            
+        except Exception as e:
+            logging.error(f"Error during transport animation: {e}")
+            worm['transport_target'] = None
+            worm['mouth_state'] = 0
+            # Ensure speed is restored in case of error
+            if 'original_worm_speed' in locals():
+                 worm['speed_multiplier'] = original_worm_speed
+    
+    def set_symbol_transport_callback(self, callback):
+        """Set callback function for when a symbol is transported to Window C"""
+        self.symbol_transport_callback = callback
         
     def clear_worms(self):
         """Clear all worms from the canvas"""
@@ -648,71 +951,101 @@ class WormAnimation:
         
     def _add_borders_to_solution_symbols(self):
         """Add visible borders to all solution symbols to show they're interactive"""
-        if not self.canvas.winfo_exists():
+        if not self.canvas.winfo_exists() or not self.interaction_enabled:
             return
-            
-        for symbol in self.solution_symbols:
-            symbol_id = symbol.get('id')
-            if not symbol_id:
+
+        # First, remove any existing glows to prevent duplicates or orphaned glows
+        self._remove_borders_from_solution_symbols() 
+
+        for symbol_data in self.solution_symbols:
+            symbol_text_id = symbol_data.get('id') # This is the ID of the TEXT item
+            if not symbol_text_id:
                 continue
-                
+            
             try:
-                # Check if symbol exists and get its bounding box
-                bbox = self.canvas.bbox(symbol_id)
+                # Ensure the symbol_text_id is valid on the canvas before getting bbox
+                if not self.canvas.coords(symbol_text_id): # Check if item exists/has coords
+                    logging.debug(f"Symbol text ID {symbol_text_id} seems invalid or deleted, skipping glow.")
+                    continue
+
+                bbox = self.canvas.bbox(symbol_text_id)
                 if not bbox:
+                    logging.debug(f"Cannot get bbox for symbol_text_id {symbol_text_id}, skipping glow.")
                     continue
                     
-                # Add a light glow effect around the symbol
-                # For performance, we'll use a simple colored rectangle with padding
                 padding = 3
-                glow_id = f"glow_{symbol_id}"
-                
-                # Delete existing glow if any
-                self.canvas.delete(glow_id)
-                
-                # Create new glow
-                self.canvas.create_rectangle(
+                # The tag "symbol_glow" is used for mass deletion.
+                # We can store the glow's own ID in symbol_data if needed for more granular control,
+                # but _remove_borders_from_solution_symbols already iterates symbol_data.
+                glow_rect_id = self.canvas.create_rectangle(
                     bbox[0] - padding, bbox[1] - padding,
                     bbox[2] + padding, bbox[3] + padding,
-                    outline="#88CCFF",  # Light blue glow
+                    outline="#88CCFF", # Light blue glow
                     width=2,
-                    fill="",  # Transparent fill
-                    tags=(glow_id, "symbol_glow")
+                    fill="", # Transparent fill
+                    tags=("symbol_glow", f"glow_for_text_item_{symbol_text_id}") # General and specific tag
                 )
+                # Ensure glow is drawn behind the text item it's for.
+                self.canvas.tag_lower(glow_rect_id, symbol_text_id)
+                symbol_data['glow_canvas_id'] = glow_rect_id # Store the glow's own canvas ID
                 
-                # Move glow behind the text
-                self.canvas.tag_lower(glow_id)
-                
-                # Store glow ID with the symbol
-                symbol['glow_id'] = glow_id
-                
-            except tk.TclError:
-                # Symbol might not exist anymore
+            except tk.TclError as e:
+                # This can happen if symbol_text_id is no longer valid (e.g., canvas cleared)
+                logging.warning(f"TclError adding glow for symbol ID {symbol_text_id}: {e}. Symbol might be gone.")
+                if 'glow_canvas_id' in symbol_data: # Clean up if it was partially set
+                    del symbol_data['glow_canvas_id']
                 continue
+        logging.debug(f"Finished adding/updating glow borders for {len(self.solution_symbols)} currently tracked symbols.")
                 
     def _remove_borders_from_solution_symbols(self):
         """Remove borders from all solution symbols"""
         if not self.canvas.winfo_exists():
             return
             
-        # Remove all symbol glows
+        # Mass delete based on the general tag
         self.canvas.delete("symbol_glow")
         
-        # Clear glow_id references in symbols
-        for symbol in self.solution_symbols:
-            if 'glow_id' in symbol:
-                del symbol['glow_id']
+        # Also ensure internal tracking of glow IDs is cleared
+        for symbol_data in self.solution_symbols:
+            if 'glow_canvas_id' in symbol_data:
+                del symbol_data['glow_canvas_id']
+        logging.debug("Removed all symbol glow borders and cleared internal glow IDs.")
                 
 # For testing the animation standalone
 if __name__ == "__main__":
     root = tk.Tk()
-    root.title("Worm Animation Test with Symbol Interaction")
+    root.title("Worm Animation Test with Symbol Transport")
     root.geometry("600x400")
     
     canvas = tk.Canvas(root, bg="white")
     canvas.pack(fill=tk.BOTH, expand=True)
     
-    worm_animation = WormAnimation(canvas, 600, 400)
+    # Test callback for symbol transport
+    def on_symbol_transported(symbol_id, char):
+        print(f"Symbol '{char}' (ID: {symbol_id}) transported to Window C!")
+        
+        # Recreate the symbol at the bottom of the screen (simulating reapplication)
+        new_x = random.randint(100, 500)
+        new_y = random.randint(300, 350)
+        
+        new_symbol_id = canvas.create_text(
+            new_x, new_y, text=char, font=("Arial", 24, "bold"),
+            fill="black", tags="test_symbol"
+        )
+        
+        # Add to symbols list
+        new_symbol = {
+            'id': new_symbol_id,
+            'position': (new_x, new_y),
+            'char': char,
+            'visible': True
+        }
+        
+        worm_animation.solution_symbols.append(new_symbol)
+        
+        print(f"Symbol reapplied at ({new_x}, {new_y}) with new ID: {new_symbol_id}")
+    
+    worm_animation = WormAnimation(canvas, 600, 400, on_symbol_transported)
     
     # Create some test symbols
     def create_test_symbols():
@@ -732,7 +1065,8 @@ if __name__ == "__main__":
             symbols.append({
                 'id': symbol_id,
                 'position': (x, y),
-                'char': char
+                'char': char,
+                'visible': True
             })
             
         # Update worm animation with symbols
@@ -759,6 +1093,9 @@ if __name__ == "__main__":
     def add_test_symbols():
         create_test_symbols()
         
+    def force_transport():
+        worm_animation._transport_random_symbol()
+        
     # Add control buttons
     control_frame = tk.Frame(root)
     control_frame.pack(fill=tk.X)
@@ -770,5 +1107,6 @@ if __name__ == "__main__":
     tk.Button(control_frame, text="Reset Speed", command=reset_speed).pack(side=tk.LEFT, padx=5, pady=5)
     tk.Button(control_frame, text="Celebrate", command=celebrate).pack(side=tk.LEFT, padx=5, pady=5)
     tk.Button(control_frame, text="Add Symbols", command=add_test_symbols).pack(side=tk.LEFT, padx=5, pady=5)
+    tk.Button(control_frame, text="Transport Symbol", command=force_transport).pack(side=tk.LEFT, padx=5, pady=5)
     
     root.mainloop() 

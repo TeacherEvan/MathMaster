@@ -376,27 +376,56 @@ Date: 2025-05-02
 
 Date: 2025-05-02
 
- 
- S a t u r d a y ,   M a y   1 7 ,   2 0 2 5   4 : 1 3 : 2 0   A M 
- 
- - 
- 
- S e p a r a t e d   e r r o r   a n i m a t i o n   i n t o   i t s   o w n   c l a s s   ( e r r o r _ a n i m a t i o n . p y )   f o r   b e t t e r   c o d e   o r g a n i z a t i o n   a n d   e n c a p s u l a t i o n . 
- 
- 
- 
- 
- 
- 
- 
- S a t u r d a y ,   M a y   1 7 ,   2 0 2 5   4 : 1 7 : 5 4   A M 
- 
- - 
- 
- E n h a n c e d   e r r o r   a n i m a t i o n   t o   o n l y   b e c o m e   v i s i b l e   w h e n   e x p l i c i t l y   t r i g g e r e d   a n d   r e m a i n   h i d d e n   o t h e r w i s e . 
- 
- 
- 
- 
- 
- 
+## MathMaster Worm Feature Development Summary (as of user recap)
+
+The development of the animated worm feature for Window B in MathMaster has progressed through several stages:
+
+1.  **Initial Worm Creation:**
+    *   **Request:** A "cute earth wormy" animation (blinking eyes, wiggly body, animated mouth) to appear at the start of each level, move freely in Window B. Speed boost (35% for 10s) upon first row completion in Window B.
+    *   **Implementation:** `WormsWindow_B.py` created with `WormAnimation` class, including a test mode.
+
+2.  **Symbol Interaction (Borders):**
+    *   **Request:** Worm interacts with symbols in Window B (borders/parameters) during speed boost.
+    *   **Implementation:** `WormAnimation` updated to track solution symbols, enable interaction (shaking, particle effects - though these were later noted as over-delivery for the immediate request), add/remove glow borders, and target symbols.
+
+3.  **User Feedback & Clarification (Focus & Timing):**
+    *   **Feedback:** User noted that some features (targeting, particles) were beyond the specific request.
+    *   **Next Request:** After every 10 seconds, a worm chooses a random *visible* symbol in Window B, pushes it up over the border from Window B to Window C. Game logic needs to recognize the symbol's new status.
+
+4.  **Symbol Transport (Window B to Window C):**
+    *   **Implementation (`WormsWindow_B.py`):**
+        *   Added 10-second `transport_interval`.
+        *   `_transport_random_symbol` for selecting visible symbols.
+        *   `_target_symbol_for_transport` and `_begin_transport_animation` for movement and animation.
+        *   `symbol_transport_callback` to notify `gameplay_screen.py`.
+    *   **Implementation (`gameplay_screen.py`):**
+        *   Initialized `WormAnimation` with the callback.
+        *   `handle_symbol_transport`: Marks original symbol hidden, adds new falling symbol in Window C.
+        *   `_update_worm_solution_symbols`: Provides `WormAnimation` with visible symbols.
+        *   Called `worm_animation.on_step_complete()` on row completion.
+
+5.  **User Feedback & Bug Fixing (Timing, Worm Count, `add_symbol` error):**
+    *   **Issues:**
+        *   Transport behavior should *only* start 10s *after* first row completion, then continue 10s interval.
+        *   Two worms appearing instead of one.
+        *   Error: `'FallingSymbols' object has no attribute 'add_symbol'`.
+    *   **Fixes (`gameplay_screen.py`):**
+        *   Changed `worm_animation.start_animation(2)` to `worm_animation.start_animation(1)`.
+        *   Modified `_check_if_step_complete`: 10s timer for *first* transport starts *after* first row completion. New `_start_transport_timer` added.
+        *   In `handle_symbol_transport`, changed `self.falling_symbols.create_symbol(...)` to directly append to `self.falling_symbols.falling_symbols_on_screen`.
+
+6.  **User Feedback & Bug Fixing (Worm Appearance Timing, Gentle Push, Symbol ID Error):**
+    *   **Issues:**
+        *   Worms should *only appear* after the first row is completed.
+        *   Push animation needs to be more gentle/natural.
+        *   Error from logs: "Could not find transported symbol with ID X".
+    *   **Fixes:**
+        *   **`gameplay_screen.py`:** `WormAnimation` created in `_init_worm_animation`, but `start_animation(1)` moved to `_check_if_step_complete` (called after first row completion).
+        *   **`WormsWindow_B.py`:**
+            *   `_begin_transport_animation`: Increased `total_steps` for push, linear movement, slowed frame rate.
+            *   Worm speed reduced during push (`speed_multiplier`).
+            *   Worm attempts to stay below symbol.
+            *   Adjusted worm movement in `_update_worm` during transport.
+
+**Current Status & Potential Lingering Issue:**
+The primary concern noted was the "Could not find transported symbol" error. The latest fixes aimed to resolve this by ensuring correct timing for worm activation and symbol list updates. The direct manipulation of `falling_symbols_on_screen` was a key fix for recreating symbols in Window C. The effectiveness of these changes in resolving the symbol ID error needs to be verified.
