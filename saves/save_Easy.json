@@ -1,14 +1,25 @@
 {
   "level": "Easy",
-  "current_problem": "Problem 33: 10 + x - 4 = 13",
+  "current_problem": "Problem 43: x + 6 = 15",
   "current_solution_steps": [
-    "10 + x - 4 = 13",
-    "x - 4 = 13 - 10",
-    "x - 4 = 3",
-    "x = 3 + 4",
-    "x = 7"
+    "x + 6 = 15",
+    "x = 15 - 6",
+    "x = 9"
   ],
-  "visible_chars": [],
-  "incorrect_clicks": 0,
+  "visible_chars": [
+    [
+      0,
+      1
+    ],
+    [
+      0,
+      9
+    ],
+    [
+      0,
+      0
+    ]
+  ],
+  "incorrect_clicks": 1,
   "saved_cracks": []
 }

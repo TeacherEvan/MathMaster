@@ -531,22 +531,27 @@ class GameplayScreen(tk.Toplevel):
         self.after(500, self._init_worm_animation)
 
     def _init_worm_animation(self):
-        """Initialize worm animation in Window B"""
+        """Initializes the worm animation feature"""
         if not hasattr(self, 'solution_canvas') or not self.solution_canvas.winfo_exists():
+            logging.error("Cannot initialize worm animation without solution_canvas.")
             return
             
-        # Initialize worm animation with the solution canvas (Window B)
-        # Worm will be created and started later, after first row completion
+        # Initialize the actual worm animation
         self.worm_animation = WormAnimation(
             self.solution_canvas,
             symbol_transport_callback=self.handle_symbol_transport,
-            symbol_targeted_for_steal_callback=self.handle_symbol_targeted_for_steal # New callback passed
+            symbol_targeted_for_steal_callback=self.handle_symbol_targeted_for_steal
         )
         
-        # Update solution symbols when they change - this can still run
-        self.after(1000, self._update_worm_solution_symbols)  # Initial update after symbols are drawn
+        # Set up the list of symbols for worms to potentially target
+        self.solution_symbols_data_for_worms = []
         
-        logging.info("Worm animation object initialized (will start after first row completion)")
+        # Start with animation paused - it will activate when first row is solved
+        logging.info("Worm animation initialized but inactive until first row solved.")
+        
+        # Schedule delayed start of the symbol update mechanism
+        # This delay gives the canvas time to be properly laid out and solution symbols to be drawn
+        self.after(2000, self._update_worm_solution_symbols)  
 
     def handle_symbol_transport(self, symbol_id, char):
         """Handle callback when a worm transports a symbol to Window C"""
@@ -669,8 +674,18 @@ class GameplayScreen(tk.Toplevel):
             self.after(1000, self._update_worm_solution_symbols) # Try again
             return
             
-        # Ensure solution_symbol_display has the latest data drawn
-        # self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars) # This might be too frequent here
+        # Check if canvas is ready and has dimensions
+        canvas_width, canvas_height = self.solution_symbol_display.get_canvas_dimensions()
+        if canvas_width is None or canvas_height is None or canvas_width <= 1 or canvas_height <= 1:
+            logging.info("Canvas not yet sized properly for worm solution symbols update. Will retry.")
+            self.after(1000, self._update_worm_solution_symbols)
+            return
+            
+        # Ensure solution_symbol_display has drawn symbols before trying to find them
+        if not self.solution_symbol_display.character_positions:
+            logging.info("Solution symbols not yet drawn. Will retry worm symbols update.")
+            self.after(1000, self._update_worm_solution_symbols)
+            return
 
         # Reset solution symbols list for worms
         self.solution_symbols_data_for_worms = []
@@ -685,28 +700,14 @@ class GameplayScreen(tk.Toplevel):
                     continue
 
                 # Get its canvas ID and position from SolutionSymbolDisplay
-                # This requires SolutionSymbolDisplay to provide a way to get canvas item ID if worms need it directly.
-                # For now, worms get coordinates. If they need ID, SSD needs to expose it.
-                # Let's assume worms primarily need coordinates and the char itself.
-                
-                # We need the canvas item ID that WormsWindow_B uses.
-                # SolutionSymbolDisplay creates items like "ssd_0_0_text".
-                # This is a bit tricky because WormAnimation was using find_withtag with a simpler tag.
-                # For now, let's pass coordinates and the char. If worm animation *needs* the canvas ID,
-                # SolutionSymbolDisplay will need a method like `get_canvas_item_id(line, char_idx)`.
-                
-                # For the current WormAnimation, it seems to work with a list of dicts containing 'id', 'position', 'char', etc.
-                # The 'id' was the canvas item_id.
-                # The new SolutionSymbolDisplay creates two items per char (text & shadow).
-                # We should provide the ID of the main text item.
-                
                 char_tag_text = f"ssd_{line_idx}_{char_idx}_text"
                 items = self.solution_symbol_display.canvas.find_withtag(char_tag_text)
                 
+                coords = self.solution_symbol_display.get_symbol_coordinates(line_idx, char_idx)
+                
                 if items:
                     symbol_canvas_id = items[0]
-                    coords = self.solution_symbol_display.get_symbol_coordinates(line_idx, char_idx)
-
+                    
                     is_visible_to_player = (line_idx, char_idx) in self.visible_chars
                     
                     self.solution_symbols_data_for_worms.append({
@@ -722,7 +723,11 @@ class GameplayScreen(tk.Toplevel):
                     missing_tags.add(char_tag_text)
 
         # Log a summary of missing tags instead of individual messages
-        if missing_tags and self.debug_mode:
+        if missing_tags and len(self.solution_symbols_data_for_worms) == 0:
+            logging.warning(f"No symbols found for worms. Canvas items may not be drawn yet. Will retry.")
+            self.after(1000, self._update_worm_solution_symbols)
+            return
+        elif missing_tags and self.debug_mode:
             logging.warning(f"_update_worm_solution_symbols: Could not find {len(missing_tags)} canvas items")
             
         # Update worm animation with current symbols
@@ -990,13 +995,25 @@ class GameplayScreen(tk.Toplevel):
 
     def load_new_problem(self):
         """Loads a random problem for the selected level"""
-        if self.current_level not in PROBLEMS or not PROBLEMS[self.current_level]:
+        logging.info(f"Attempting to load new problem for level: {self.current_level}")
+        
+        if self.current_level not in PROBLEMS:
+            logging.error(f"Invalid level: {self.current_level}")
+            self.problem_prefix_label.config(text="Error")
+            self.problem_equation_label.config(text="Invalid level selected.")
+            self.current_problem = ""
+            self.current_solution_steps = []
+            if self.solution_symbol_display:
+                self.solution_symbol_display.update_data([], set())
+            return
+            
+        if not PROBLEMS[self.current_level]:
+            logging.error(f"No problems found for level: {self.current_level}")
             self.problem_prefix_label.config(text="Error")
             self.problem_equation_label.config(text="No equations available for this level.")
-            logging.error(f"No problems found for level: {self.current_level}")
-            self.current_problem = "" # Ensure problem state is cleared
+            self.current_problem = ""
             self.current_solution_steps = []
-            if self.solution_symbol_display: # Clear display if no problem
+            if self.solution_symbol_display:
                 self.solution_symbol_display.update_data([], set())
             return
 
@@ -1014,93 +1031,105 @@ class GameplayScreen(tk.Toplevel):
             self.solution_symbol_display.clear_all_visuals()
 
         available_problems = PROBLEMS[self.current_level]
+        logging.info(f"Available problems for {self.current_level}: {len(available_problems)}")
         
         # Filter out recently used problems AND any empty/whitespace-only problem strings
         fresh_problems = [p.strip() for p in available_problems if p.strip() and p not in self.last_problems]
+        logging.info(f"Fresh problems available: {len(fresh_problems)}")
         
         if not fresh_problems:
             # If all fresh problems were used or were empty, try from all available non-empty problems (excluding last one if possible)
+            logging.warning(f"No fresh problems available for {self.current_level}, using full problem set")
             fresh_problems = [p.strip() for p in available_problems if p.strip() and (not self.last_problems or p != self.last_problems[-1])]
+            
             if not fresh_problems:
                  # This means ALL problems for the level are empty/whitespace or only one bad one repeats
+                 logging.error(f"All problems for level {self.current_level} are empty or have been used. Cannot load new problem.")
                  self.problem_prefix_label.config(text="Error")
                  self.problem_equation_label.config(text=f"No valid problems for {self.current_level}.")
-                 logging.error(f"All problems for level {self.current_level} are empty or have been used. Cannot load new problem.")
                  self.current_problem = "" # Ensure problem state is cleared
                  self.current_solution_steps = []
+                 if self.solution_symbol_display:
+                     self.solution_symbol_display.update_data([], set())
                  return
         
-        self.current_problem = random.choice(fresh_problems)
-        # self.current_problem should already be stripped from list comprehension, but strip again to be safe.
-        self.current_problem = self.current_problem.strip()
-
-        # Update last_problems history to prevent immediate repetition in the same session
-        if self.current_problem: # Only add if a valid problem was chosen
-            self.last_problems.append(self.current_problem)
-            if len(self.last_problems) > self.max_history:
-                self.last_problems.pop(0)
-        
-        logging.info(f"Selected new problem: '{self.current_problem}' from {len(fresh_problems)} available problems. Last problems cache: {self.last_problems}")
-
-        # Final check if problem is somehow still empty (should be caught by list comprehensions)
-        if not self.current_problem:
-            logging.error(f"Load New Problem: Selected an empty problem string for level '{self.current_level}' despite filtering. This indicates an issue with problem data or logic.")
+        try:
+            self.current_problem = random.choice(fresh_problems)
+            # self.current_problem should already be stripped from list comprehension, but strip again to be safe.
+            self.current_problem = self.current_problem.strip()
+            logging.info(f"Selected problem: '{self.current_problem}'")
+            
+            # Update last_problems history to prevent immediate repetition in the same session
+            if self.current_problem: # Only add if a valid problem was chosen
+                self.last_problems.append(self.current_problem)
+                if len(self.last_problems) > self.max_history:
+                    self.last_problems.pop(0)
+            
+            # Final check if problem is somehow still empty (should be caught by list comprehensions)
+            if not self.current_problem:
+                logging.error(f"Load New Problem: Selected an empty problem string for level '{self.current_level}' despite filtering.")
+                self.problem_prefix_label.config(text="Error")
+                self.problem_equation_label.config(text="Problem loading failed.")
+                self.current_solution_steps = [] # Clear steps
+                if self.solution_symbol_display:
+                    self.solution_symbol_display.update_data([], set())
+                return
+            
+            # Format the problem text - split at colon
+            display_text = self.current_problem
+            if ":" in display_text:
+                prefix, equation = display_text.split(":", 1)
+                self.problem_prefix_label.config(text=prefix.strip())
+                self.problem_equation_label.config(text=equation.strip())
+            else:
+                # For problems without a colon, only show the equation part, not the full solution step if it matches
+                # If the first solution step is identical to the problem, only show the problem as the equation
+                solution_steps = generate_solution_steps(display_text)
+                if solution_steps and solution_steps[0].strip() == display_text.strip():
+                    self.problem_prefix_label.config(text="Problem")
+                    self.problem_equation_label.config(text=display_text.strip())
+                else:
+                    # Fallback: show as before
+                    self.problem_prefix_label.config(text="Problem")
+                    self.problem_equation_label.config(text=display_text.strip())
+    
+            # Reset game state for new problem
+            self.visible_chars = set()
+            self.incorrect_clicks = 0
+            self.game_over = False
+    
+            # Ensure current_solution_steps is empty before generating new ones
+            self.current_solution_steps = [] 
+    
+            # Get and prepare solution steps
+            self.current_solution_steps = generate_solution_steps(self.current_problem)
+            logging.info(f"Generated {len(self.current_solution_steps)} solution steps")
+            
+            # Detailed logging for generated solution steps
+            if self.debug_mode:
+                logging.info(f"--- Generated Solution Steps for '{self.current_problem}' ---")
+                if self.current_solution_steps:
+                    for i, step_text in enumerate(self.current_solution_steps):
+                        logging.info(f"  Step {i}: '{step_text}' (Length: {len(step_text)})")
+                    logging.info(f"Total steps generated: {len(self.current_solution_steps)}")
+                else:
+                    logging.info("  No solution steps were generated.")
+                logging.info("-----------------------------------------------------")
+                
+            # Ensure redraw happens after canvas is sized and data is ready
+            if self.solution_symbol_display:
+                self.after(50, lambda: self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars))
+                
+            self.after(100, self.auto_reveal_spaces) # Auto-reveal initial spaces
+        except Exception as e:
+            logging.error(f"Error loading new problem: {str(e)}")
+            logging.error(traceback.format_exc())
             self.problem_prefix_label.config(text="Error")
             self.problem_equation_label.config(text="Problem loading failed.")
-            self.current_solution_steps = [] # Clear steps
-            return
-        
-        logging.info(f"Selected new problem: '{self.current_problem}' from {len(fresh_problems)} available problems")
-
-        # Format the problem text - split at colon
-        display_text = self.current_problem
-        if ":" in display_text:
-            prefix, equation = display_text.split(":", 1)
-            self.problem_prefix_label.config(text=prefix.strip())
-            self.problem_equation_label.config(text=equation.strip())
-        else:
-            # For problems without a colon, only show the equation part, not the full solution step if it matches
-            # If the first solution step is identical to the problem, only show the problem as the equation
-            solution_steps = generate_solution_steps(display_text)
-            if solution_steps and solution_steps[0].strip() == display_text.strip():
-                self.problem_prefix_label.config(text="Problem")
-                self.problem_equation_label.config(text=display_text.strip())
-            else:
-                # Fallback: show as before
-                self.problem_prefix_label.config(text="Problem")
-                self.problem_equation_label.config(text=display_text.strip())
-
-        logging.info(f"Loaded equation: {display_text}")
-
-        # Reset game state for new problem
-        self.visible_chars = set()
-        self.incorrect_clicks = 0
-        self.game_over = False
-        # Clear previous solution lines from canvas - now handled by solution_symbol_display.clear_all_visuals or update_data
-        # self.solution_canvas.delete("solution_text") # Old way
-        # self.solution_canvas.delete("feedback_flash") # Old way, feedback_flash not used by SSD
-
-        # Ensure current_solution_steps is empty before generating new ones
-        self.current_solution_steps = [] 
-
-        # Get and prepare solution steps
-        self.current_solution_steps = generate_solution_steps(self.current_problem)
-        
-        # Detailed logging for generated solution steps
-        if self.debug_mode:
-            logging.info(f"--- Generated Solution Steps for '{self.current_problem}' ---")
-            if self.current_solution_steps:
-                for i, step_text in enumerate(self.current_solution_steps):
-                    logging.info(f"  Step {i}: '{step_text}' (Length: {len(step_text)})")
-                logging.info(f"Total steps generated: {len(self.current_solution_steps)}")
-            else:
-                logging.info("  No solution steps were generated.")
-            logging.info("-----------------------------------------------------")
-            
-        # Ensure redraw happens after canvas is sized and data is ready
-        if self.solution_symbol_display:
-            self.after(50, lambda: self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars))
-        self.after(100, self.auto_reveal_spaces) # Auto-reveal initial spaces
+            self.current_problem = ""
+            self.current_solution_steps = []
+            if self.solution_symbol_display:
+                self.solution_symbol_display.update_data([], set())
 
     def draw_solution_lines(self):
         """
@@ -1711,38 +1740,76 @@ class GameplayScreen(tk.Toplevel):
             
         logging.info(f"Popup choice selected: {choice}")
         
-        if choice == "retry":
-            # Clear game state and load new problem
-            self.clear_saved_game()
-            self.clear_all_cracks()
-            self.load_new_problem()
-            self.game_over = False
-            # Reset game state
-            self.visible_chars = set()
-            self.incorrect_clicks = 0
-            self.falling_symbols = None
-            # Restart animation
-            self.falling_symbols = FallingSymbols(self.symbol_canvas, list("0123456789Xx +-=÷×*/()"))
-            self.after(100, self.falling_symbols.start_animation)
-        elif choice == "level_select":
-            # Return to level select screen
-            self.parent.deiconify()  # Show the parent (level select) window
-            self.destroy()  # Close the gameplay window
-        elif choice == "next":
-            # Clear current game state
-            self.clear_saved_game()
-            self.clear_all_cracks()
-            # Load new problem
-            self.load_new_problem()
-            self.game_over = False
-            # Reset game state
-            self.visible_chars = set()
-            self.incorrect_clicks = 0
-            self.falling_symbols = None
-            # Restart animation
-            self.falling_symbols = FallingSymbols(self.symbol_canvas, list("0123456789Xx +-=÷×*/()"))
-            self.after(100, self.falling_symbols.start_animation)
-            logging.info("Starting next problem")
+        try:
+            if choice == "retry":
+                # Clear game state and load new problem
+                self.clear_saved_game()
+                self.clear_all_cracks()
+                self.load_new_problem()
+                self.game_over = False
+                # Reset game state
+                self.visible_chars = set()
+                self.incorrect_clicks = 0
+                
+                # Re-initialize falling symbols animation
+                if hasattr(self, 'falling_symbols') and self.falling_symbols:
+                    self.falling_symbols.stop_animation()
+                self.falling_symbols = None
+                self.falling_symbols = FallingSymbols(self.symbol_canvas, list("0123456789Xx +-=÷×*/()"))
+                self.after(100, self.falling_symbols.start_animation)
+                logging.info("Retry: Game state reset and new problem loaded")
+            elif choice == "level_select":
+                # Return to level select screen
+                self.parent.deiconify()  # Show the parent (level select) window
+                self.destroy()  # Close the gameplay window
+                logging.info("Returning to level select screen")
+            elif choice == "next":
+                # Clear current game state
+                self.clear_saved_game()
+                self.clear_all_cracks()
+                
+                # Reset state variables
+                self.game_over = False
+                self.visible_chars = set()
+                self.incorrect_clicks = 0
+                
+                # Stop existing animation
+                if hasattr(self, 'falling_symbols') and self.falling_symbols:
+                    self.falling_symbols.stop_animation()
+                self.falling_symbols = None
+                
+                # Load new problem
+                self.load_new_problem()
+                
+                # Start new animation
+                self.falling_symbols = FallingSymbols(self.symbol_canvas, list("0123456789Xx +-=÷×*/()"))
+                self.after(100, self.falling_symbols.start_animation)
+                logging.info("Starting next problem")
+            else:
+                logging.error(f"Unknown popup choice: {choice}")
+        except Exception as e:
+            logging.error(f"Error handling popup choice '{choice}': {str(e)}")
+            logging.error(traceback.format_exc())
+            # Try to recover by loading a new problem if possible
+            try:
+                self.clear_saved_game()
+                self.clear_all_cracks()
+                self.game_over = False
+                self.visible_chars = set()
+                self.incorrect_clicks = 0
+                self.load_new_problem()
+                if hasattr(self, 'falling_symbols') and self.falling_symbols:
+                    self.falling_symbols.stop_animation()
+                self.falling_symbols = FallingSymbols(self.symbol_canvas, list("0123456789Xx +-=÷×*/()"))
+                self.after(100, self.falling_symbols.start_animation)
+                logging.info("Recovered from error by loading new problem")
+            except Exception as recovery_error:
+                logging.error(f"Failed to recover from error: {str(recovery_error)}")
+                # Last resort - return to level select
+                if self.parent and self.parent.winfo_exists():
+                    self.parent.deiconify()
+                if self.winfo_exists():
+                    self.destroy()
 
     def check_level_complete(self):
         """Check if all solution steps are completed"""

@@ -508,6 +508,27 @@ class SolutionSymbolDisplay:
     def get_symbol_coordinates(self, line_idx, char_idx):
         """Calculate the exact coordinates for a character in the solution canvas.
            This is crucial for interactions like teleportation or worm targeting."""
+        # First check if the character is already drawn on the canvas, and use its actual position
+        if (line_idx, char_idx, 'text') in self.drawn_symbol_items:
+            text_id = self.drawn_symbol_items[(line_idx, char_idx, 'text')]
+            try:
+                bbox = self.canvas.bbox(text_id)
+                if bbox:
+                    center_x = (bbox[0] + bbox[2]) / 2
+                    center_y = (bbox[1] + bbox[3]) / 2
+                    logging.info(f"Using actual position for symbol at ({line_idx}, {char_idx}): ({center_x}, {center_y})")
+                    return center_x, center_y
+            except tk.TclError:
+                # Item might not exist anymore, fall back to calculation
+                pass
+                
+        # Check if we have a stored position
+        if (line_idx, char_idx) in self.character_positions:
+            center_x, center_y = self.character_positions[(line_idx, char_idx)]
+            logging.info(f"Using stored position for symbol at ({line_idx}, {char_idx}): ({center_x}, {center_y})")
+            return center_x, center_y
+            
+        # Fall back to calculation
         canvas_width, canvas_height = self.get_canvas_dimensions()
         if canvas_width is None:
             return canvas_width / 2 if canvas_width else 300, canvas_height / 2 if canvas_height else 200 # Fallback
@@ -549,6 +570,7 @@ class SolutionSymbolDisplay:
         char_left_edge_x = x_start_for_line + (char_idx * effective_char_width)
         x_center = char_left_edge_x + (effective_char_width / 2)
         
+        logging.info(f"Calculated position for symbol at ({line_idx}, {char_idx}): ({x_center}, {y_center})")
         return x_center, y_center
 
     def clear_all_visuals(self):

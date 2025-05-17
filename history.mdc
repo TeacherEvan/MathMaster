@@ -508,3 +508,16 @@ The primary concern noted was the "Could not find transported symbol" error. The
 ## 2023-08-04: Fixed Level Completion Issue
 - Fixed AttributeError in level_complete() method by replacing incorrect call to unlock_all_parts with celebrate_problem_solved
 - This resolves the issue where the game failed to load the next level after completing the current one
+
+## 2023-08-05: Improved Next Level Loading
+- Enhanced error handling in load_new_problem() with detailed logging and graceful failure handling
+- Added try/catch blocks and recovery logic to handle_popup_choice() to prevent crashes when loading next levels
+- Properly stopping and reinitializing animations when transitioning between levels
+- Added safeguards to ensure UI updates correctly even if problem loading fails
+
+## 2023-08-06: Teleportation and Animation Fixes
+- Fixed teleportation alignment issues by improving symbol coordinate calculation
+- Added prioritization to use actual drawn symbol positions for more accurate teleportation
+- Increased initial delay for worm animation to ensure solution symbols are fully drawn
+- Added additional validation checks to prevent attempting to use symbols that aren't yet drawn
+- Improved logging to make troubleshooting easier and reduced redundant warning messages
