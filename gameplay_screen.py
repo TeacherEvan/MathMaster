@@ -675,6 +675,9 @@ class GameplayScreen(tk.Toplevel):
         # Reset solution symbols list for worms
         self.solution_symbols_data_for_worms = []
         
+        # Keep track of warnings to avoid log flooding
+        missing_tags = set()
+        
         # Loop through all characters in current solution steps
         for line_idx, line in enumerate(self.current_solution_steps):
             for char_idx, char_val in enumerate(line):
@@ -715,9 +718,13 @@ class GameplayScreen(tk.Toplevel):
                         'visible_to_player': is_visible_to_player # New field: if player can see it
                     })
                 else:
-                    if self.debug_mode:
-                        logging.warning(f"_update_worm_solution_symbols: Could not find canvas item for tag {char_tag_text}")
+                    # Add to the set of missing tags instead of logging each one
+                    missing_tags.add(char_tag_text)
 
+        # Log a summary of missing tags instead of individual messages
+        if missing_tags and self.debug_mode:
+            logging.warning(f"_update_worm_solution_symbols: Could not find {len(missing_tags)} canvas items")
+            
         # Update worm animation with current symbols
         self.worm_animation.update_solution_symbols(self.solution_symbols_data_for_worms)
         
@@ -1760,36 +1767,28 @@ class GameplayScreen(tk.Toplevel):
 
     def level_complete(self):
         """Handle level completion"""
-        self.game_over = True
+        logging.info(f"Level {self.current_level} completed!")
         
-        logging.info("Level complete! Stopping animations and celebrating.")
+        # Clear saved game file
+        self.clear_saved_game()
         
-        # Stop falling symbols animation
-        if self.falling_symbols:
-            self.falling_symbols.stop_animation()
-            
-        # Clear any existing symbols for a clean visual
-        if self.falling_symbols:
-            self.falling_symbols.clear_symbols()
-        
-        # Play lock victory animation
+        # Ensure lock is fully unlocked
         if self.lock_animation:
             self.lock_animation.celebrate_problem_solved()
         
-        # Make worms celebrate too
+        # Stop gameplay-specific timers
+        self.game_is_active = False
+        
+        # If worm animation exists, make them celebrate
         if hasattr(self, 'worm_animation') and self.worm_animation:
-            self.worm_animation.celebrate(duration=5000)
+            self.worm_animation.celebrate(duration=1000)
         
         # Remove any cracks from the error animation
         if self.error_animation:
             self.error_animation.clear_all_cracks()
         
-        # Schedule popup after animations complete
-        def show_popup_after_animation():
-            self.show_level_complete_popup()
-        
-        # Delay popup to let animations finish
-        self.after(2000, show_popup_after_animation)
+        # Display popup immediately
+        self.show_level_complete_popup()
 
     def show_level_complete_popup(self):
         """Displays the enhanced 'Level Complete' pop-up window"""

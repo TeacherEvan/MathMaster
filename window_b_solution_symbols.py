@@ -98,6 +98,14 @@ class SolutionSymbolDisplay:
             return
 
         canvas_width, canvas_height = self.get_canvas_dimensions()
+        
+        # Check if canvas dimensions are valid before proceeding
+        if canvas_width is None or canvas_height is None:
+            logging.warning("Canvas dimensions not available yet. Skipping symbol drawing.")
+            # Schedule another attempt after a short delay
+            if self.canvas.winfo_exists():
+                self.canvas.after(100, self.draw_symbols)
+            return
 
         # Dynamically adjust font size based on canvas height and number of lines
         num_lines = len(self.current_solution_steps_cache)
