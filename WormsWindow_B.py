@@ -41,7 +41,7 @@ class WormAnimation:
         # Symbol transport functionality (Window B to C)
         self.symbol_transport_callback = symbol_transport_callback
         self.transport_timer = None
-        self.transport_interval = 15000  # 15 seconds (updated from 10000)
+        self.transport_interval = 10000  # 10 seconds (reduced from 15000)
         self.transporting_symbols = {}  # Track symbols being transported
         self.symbol_targeted_for_steal_callback = symbol_targeted_for_steal_callback # New callback
         
@@ -68,6 +68,7 @@ class WormAnimation:
             "#EE82EE"   # Violet
         ]
         self.flicker_counter = 0 # For controlling flicker speed
+        self.lsd_flicker_rate = 5 # Lower is faster flicker for segment cycling
 
         logging.info("WormAnimation initialized")
 
@@ -182,16 +183,7 @@ class WormAnimation:
             worm['mouth'] = None
             
         # Determine current color for the worm
-        current_worm_color = worm['color']
         is_transporting = bool(worm.get('transport_target'))
-
-        if is_transporting:
-            # Flicker effect: change color every few frames
-            # A simpler approach is to pick one random LSD color for the whole worm per draw call during transport
-            # This might look more like a solid flicker than segment-by-segment chaos.
-            # If flicker_counter is used, it has to be part of the worm's state or global to this function for multiple worms.
-            # For now, let's make the whole worm a random LSD color when transporting.
-            current_worm_color = random.choice(self.lsd_colors)
 
         # Create segments in reverse order (tail to head)
         for i in range(self.worm_segments - 1, -1, -1):
@@ -205,9 +197,24 @@ class WormAnimation:
             # Calculate segment size - gradually smaller toward the tail
             segment_size = int(worm['segment_size'] * (0.7 + 0.3 * (i / self.worm_segments)))
             
-            # Create segment
-            segment_fill_color = current_worm_color # Use the determined color for all segments
+            # Create segment with enhanced visuals
+            if is_transporting:
+                segment_color_index = (i + int(self.flicker_counter / self.lsd_flicker_rate)) % len(self.lsd_colors)
+                segment_fill_color = self.lsd_colors[segment_color_index]
+                # Add glow effect for transporting worms
+                glow = self.canvas.create_oval(
+                    x - segment_size - 2, y - segment_size - 2,
+                    x + segment_size + 2, y + segment_size + 2,
+                    fill="",
+                    outline=segment_fill_color,
+                    width=1.5,
+                    tags=("worm_glow", f"worm_{worm['id']}")
+                )
+                worm['segments'].append(glow)
+            else:
+                segment_fill_color = worm['color'] # Normal worm color
             
+            # Create main segment
             segment = self.canvas.create_oval(
                 x - segment_size, y - segment_size,
                 x + segment_size, y + segment_size,
@@ -216,6 +223,34 @@ class WormAnimation:
                 tags=("worm_segment", f"worm_{worm['id']}", "worm_segment_clickable")
             )
             worm['segments'].append(segment)
+            
+            # Add highlight to give 3D effect (only for head and middle segments)
+            if i < self.worm_segments // 2:
+                # Calculate lighter color for highlight
+                if not is_transporting:
+                    r = int(segment_fill_color[1:3], 16)
+                    g = int(segment_fill_color[3:5], 16)
+                    b = int(segment_fill_color[5:7], 16)
+                    
+                    # Brighten color for highlight
+                    highlight_r = min(255, r + 50)
+                    highlight_g = min(255, g + 50)
+                    highlight_b = min(255, b + 50)
+                    highlight_color = f"#{highlight_r:02x}{highlight_g:02x}{highlight_b:02x}"
+                    
+                    # Add small highlight circle in upper left of segment
+                    highlight_size = segment_size * 0.4
+                    highlight_x = x - segment_size * 0.3
+                    highlight_y = y - segment_size * 0.3
+                    
+                    highlight = self.canvas.create_oval(
+                        highlight_x - highlight_size, highlight_y - highlight_size,
+                        highlight_x + highlight_size, highlight_y + highlight_size,
+                        fill=highlight_color,
+                        outline="",
+                        tags=("worm_highlight", f"worm_{worm['id']}")
+                    )
+                    worm['segments'].append(highlight)
             
         # Add eyes only if we have segments
         if worm['segments']:
@@ -233,22 +268,36 @@ class WormAnimation:
             right_eye_x = head_x + math.cos(angle - math.pi/4) * eye_offset
             right_eye_y = head_y + math.sin(angle - math.pi/4) * eye_offset
             
-            # Draw eyes - white background
+            # Draw eyes with enhanced details - white background with gradient
+            # Draw eye whites with subtle shading
             left_eye_bg = self.canvas.create_oval(
                 left_eye_x - eye_size, left_eye_y - eye_size,
                 left_eye_x + eye_size, left_eye_y + eye_size,
                 fill="white",
-                outline="",
+                outline="#DDDDDD",
+                width=1,
                 tags=("worm_eye", f"worm_{worm['id']}")
             )
             right_eye_bg = self.canvas.create_oval(
                 right_eye_x - eye_size, right_eye_y - eye_size,
                 right_eye_x + eye_size, right_eye_y + eye_size,
                 fill="white",
-                outline="",
+                outline="#DDDDDD",
+                width=1,
                 tags=("worm_eye", f"worm_{worm['id']}")
             )
             worm['eyes'].extend([left_eye_bg, right_eye_bg])
+            
+            # Add a tiny highlight in each eye
+            for eye_x, eye_y in [(left_eye_x, left_eye_y), (right_eye_x, right_eye_y)]:
+                highlight = self.canvas.create_oval(
+                    eye_x - eye_size*0.3, eye_y - eye_size*0.3,
+                    eye_x - eye_size*0.1, eye_y - eye_size*0.1,
+                    fill="white",
+                    outline="",
+                    tags=("worm_eye_highlight", f"worm_{worm['id']}")
+                )
+                worm['eyes'].append(highlight)
             
             # Pupil size
             pupil_size = int(eye_size * 0.6)
@@ -259,19 +308,21 @@ class WormAnimation:
                     left_eye_x - pupil_size, left_eye_y - pupil_size,
                     left_eye_x + pupil_size, left_eye_y + pupil_size,
                     fill="black",
-                    outline="",
+                    outline="#333333",
+                    width=1,
                     tags=("worm_eye", f"worm_{worm['id']}")
                 )
                 right_pupil = self.canvas.create_oval(
                     right_eye_x - pupil_size, right_eye_y - pupil_size,
                     right_eye_x + pupil_size, right_eye_y + pupil_size,
                     fill="black",
-                    outline="",
+                    outline="#333333",
+                    width=1,
                     tags=("worm_eye", f"worm_{worm['id']}")
                 )
                 worm['eyes'].extend([left_pupil, right_pupil])
             
-            # Draw mouth
+            # Draw mouth with enhanced detail
             mouth_offset = worm['segment_size'] * 0.7
             mouth_x = head_x + math.cos(angle) * mouth_offset
             mouth_y = head_y + math.sin(angle) * mouth_offset
@@ -279,14 +330,32 @@ class WormAnimation:
             mouth_width = int(worm['segment_size'] * 0.6)
             mouth_height = int(worm['segment_size'] * (0.1 if worm['mouth_state'] == 0 else 0.4))
             
-            worm['mouth'] = self.canvas.create_oval(
+            # First add mouth interior (darker red)
+            if worm['mouth_state'] != 0:  # Only if mouth is open
+                inner_mouth = self.canvas.create_oval(
+                    mouth_x - mouth_width * 0.9, mouth_y - mouth_height * 0.9,
+                    mouth_x + mouth_width * 0.9, mouth_y + mouth_height * 0.9,
+                    fill="#801515",  # Darker red for inside of mouth
+                    outline="",
+                    tags=("worm_mouth_inner", f"worm_{worm['id']}")
+                )
+                worm['mouth'] = inner_mouth
+            
+            # Then add main mouth
+            outer_mouth = self.canvas.create_oval(
                 mouth_x - mouth_width, mouth_y - mouth_height,
                 mouth_x + mouth_width, mouth_y + mouth_height,
                 fill="#AA3333",  # Reddish mouth
-                outline="",
+                outline="#882222",  # Darker outline
+                width=1,
                 tags=("worm_mouth", f"worm_{worm['id']}")
             )
-            
+            if worm['mouth'] is None:
+                worm['mouth'] = outer_mouth
+            else:
+                # Append to segments since mouth already set
+                worm['segments'].append(outer_mouth)
+        
     def animate(self):
         """Main animation loop for all worms"""
         if not self.animation_running or not self.canvas.winfo_exists():
@@ -299,6 +368,9 @@ class WormAnimation:
             if current_width > 1 and current_height > 1:
                 self.width, self.height = current_width, current_height
                 
+            # Increment flicker counter for LSD effect
+            self.flicker_counter += 1
+
             # Update each worm
             for worm in self.worms:
                 self._update_worm(worm)
@@ -313,6 +385,14 @@ class WormAnimation:
             
     def _update_worm(self, worm):
         """Update a single worm's position and appearance"""
+        if not self.canvas.winfo_exists(): return
+
+        # Update canvas dimensions if necessary
+        current_width = self.canvas.winfo_width()
+        current_height = self.canvas.winfo_height()
+        if current_width > 1 and current_height > 1:
+            self.width, self.height = current_width, current_height
+            
         # If worm is transporting a symbol, prioritize that behavior
         if worm.get('transport_target'):
             # Movement is largely handled by _begin_transport_animation during push
@@ -723,11 +803,8 @@ class WormAnimation:
         logging.info("WormAnimation: Cleared active symbol shakes.")
 
     def _schedule_symbol_transport(self):
-        """Schedule the next symbol transport event"""
-        if not self.animation_running or not self.canvas.winfo_exists():
-            return
-            
-        # Cancel any existing timer
+        """Schedules the next attempt to transport a symbol."""
+        # Clear existing timer if any
         if self.transport_timer:
             self.canvas.after_cancel(self.transport_timer)
             
@@ -738,23 +815,27 @@ class WormAnimation:
         )
     
     def _transport_random_symbol(self):
-        """Choose a random symbol and transport it from Window B to Window C"""
-        if not self.solution_symbols or not self.worms:
-            # No symbols or worms available
-            self._schedule_symbol_transport()
+        """Selects a random visible symbol and a random worm to transport it."""
+        if not self.solution_symbols or not self.worms or not self.interaction_enabled:
             return
-            
-        # Choose a random visible symbol
-        visible_symbols = [s for s in self.solution_symbols 
-                          if not s.get('transported', False) and s.get('visible', True)]
+
+        # Filter for symbols that are actually drawn (have a valid ID) and not already targeted
+        # Also ensure they are marked as 'visible_to_player' by gameplay_screen
+        available_symbols_to_steal = [
+            s for s in self.solution_symbols 
+            if s.get('id') != -1 and not s.get('is_placeholder') and s.get('visible_to_player')
+            and s.get('id') not in [w.get('target_symbol', {}).get('id') for w in self.worms if w.get('target_symbol')]
+        ]
+
+        if not available_symbols_to_steal:
+            logging.info("No available (non-placeholder, visible to player, not already targeted) solution symbols for worms to transport.")
+            return
+
+        # Select a random worm that is not currently transporting or targeting
+        worm = random.choice(self.worms)
         
-        if not visible_symbols:
-            # No visible symbols available
-            self._schedule_symbol_transport()
-            return
-            
         # Select a random symbol
-        symbol = random.choice(visible_symbols)
+        symbol = random.choice(available_symbols_to_steal)
         symbol_id = symbol.get('id')
         
         if not symbol_id:
@@ -762,9 +843,6 @@ class WormAnimation:
             self._schedule_symbol_transport()
             return
             
-        # Choose a random worm to perform the transport
-        worm = random.choice(self.worms)
-        
         # Mark this symbol as being transported
         symbol['transported'] = True
         self.transporting_symbols[symbol_id] = symbol

@@ -557,3 +557,69 @@ The user has identified themselves as a "lazy reader" and has requested that fut
 
 * User reported bugs: worm disappearing, success popup lag, 'Next level' not refreshing.
 * Instructed to familiarize with game dynamics and not implement fixes without confirmation.
+
+* Added a 3-second delay before the level complete popup appears.
+* Investigated level transition delays and worm symbol update issues:
+    * Modified `gameplay_screen.py` (`load_new_problem`) to ensure canvas is updated before drawing solution symbols.
+    * Moved and adjusted the timing of the initial call to `_update_worm_solution_symbols` to occur after solution symbols are more likely to be drawn.
+    * This aims to reduce console warnings and improve responsiveness during level transitions.
+
+* Investigated level transition bottlenecks: Removed `update_idletasks()` from `gameplay_screen.py`'s `load_new_problem` to potentially improve responsiveness.
+* Enhanced explosion visuals in `Explosions.py`: Added "POW!" text artwork that displays for 2 seconds upon explosion.
+* Improved lock animation in `lock_animation.py`:
+    * Removed particle burst effects (`_create_radiating_circles`, `_create_floating_stars`) from `celebrate_problem_solved`.
+    * Added a mechanical feel to upward expansion by making pistons pulse (`_animate_piston_pulse_work` called from `_expand_lock_cells`).
+* Fixed `IndexError: list index out of range` in `lock_animation.py`'s `_orbit_sparkle` method by adding a safety check for the validity of canvas item coordinates before use. This aims to prevent crashes/freezes during the level completion celebration sequence.
+
+## 2024-07-30: Gameplay Refinements and Fixes
+
+- **Investigated "Unlock Text in Window C" Request:**
+    - Analyzed `gameplay_screen.py` and `lock_animation.py`.
+    - Window C (`self.frame_c` with `self.symbol_canvas`) does not appear to have any persistent "unlock..." text.
+    - The `LockAnimation` in Window A also does not render such static text.
+    - Concluded that the user might be referring to the temporary feedback message "Step X Unlocked!" (handled by `FeedbackManager`) or is mistaken about the text's location/persistence. No changes made regarding this, pending clarification.
+
+- **Analyzed `_update_worm_solution_symbols` Error Report:**
+    - The warning `WARNING:root:_update_worm_solution_symbols: Could not find X canvas items, but found Y valid items` in `gameplay_screen.py` is related to a timing issue where canvas items for solution symbols may not be drawn when the function initially runs.
+    - The function includes retry logic and placeholder mechanisms to handle this.
+    - The specific verbose warning message is conditional on `self.debug_mode` being true, suggesting it's intended for debugging and not a critical unhandled error. No changes made.
+
+- **Fixed and Implemented Level Complete Popup:**
+    - The file `level_complete_popup.py` was found to be empty.
+    - Created the `LevelCompletePopup` class in `level_complete_popup.py`.
+    - This class provides a modal `Toplevel` window displayed upon level completion.
+    - The popup includes "Next Level" and "Level Select" buttons, which trigger the callbacks defined in `gameplay_screen.py`.
+    - Implemented styling for the popup and its buttons.
+    - Corrected linter errors and a `grab_release()` issue in the popup code.
+    - **Files Modified:** `level_complete_popup.py` (created), `gameplay_screen.py` (implicitly benefits from the new popup).
+
+## 2024-07-30: Further Refinements to Feedback and Worm Symbol Acquisition
+
+- **Re-applied Feedback Message Styling (`src/ui_components/feedback_manager.py`):**
+    - The previously proposed styling changes (Courier New font, dynamic positive/negative coloring, increased padding, solid background) were re-applied as the prior attempt did not reflect in the file content. This ensures a more polished and informative feedback system for the user.
+
+- **Enhanced Worm Symbol Acquisition Robustness (`gameplay_screen.py`):
+    - **Problem:** The `WARNING:root:_update_worm_solution_symbols: Could not find X canvas items...` log messages persisted, indicating that the worms' symbol acquisition logic was still running before all solution symbols were fully rendered on the canvas, despite the previous callback mechanism.
+    - **Refinement:** Modified the `_update_worm_solution_symbols` method in `gameplay_screen.py`.
+        - If an `initial_call` to this function (typically from the `SolutionSymbolDisplay` callback) finds *zero* drawable symbols (both `found_tags == 0` and `len(self.solution_symbols_data_for_worms) == 0`), it will now schedule a more immediate retry for itself (after 250ms).
+        - This provides an additional layer of patience for the very first attempt to gather symbol data, specifically for the worms, aiming to bridge any remaining timing gaps between the `SolutionSymbolDisplay` drawing process and the worms needing the symbol data.
+        - The regular periodic update mechanism remains for subsequent calls.
+    - This change is intended to further reduce or eliminate the warnings by ensuring the worm system waits a little longer if the canvas is still populating during the initial setup phase of a new problem.
+
+## Game Fix Log Entry - [DATE]
+
+### Bug Fixes Implemented:
+
+1. **Fixed game startup errors:**
+   - Added missing `clear_saved_game()` and `load_game_state()` methods to GameplayScreen class
+   - Added missing `auto_reveal_spaces()` method that was being called but didn't exist
+   - Added missing `clear_all_cracks()` method for handling error animations
+   - Added proper initialization of `level_start_time` and `stats_manager`
+   - Fixed AttributeError that occurred when starting a level from the level selection screen
+
+2. **Added missing game functionality:**
+   - Implemented auto-save functionality for game progress
+   - Added proper error handling for game state management
+   - Ensured all referenced methods exist and are properly implemented
+
+These changes ensure the game can properly start levels from the level selection screen without errors and maintain proper game state.

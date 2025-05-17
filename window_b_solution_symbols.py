@@ -4,9 +4,10 @@ import math
 import time
 
 class SolutionSymbolDisplay:
-    def __init__(self, canvas, gameplay_screen_ref):
+    def __init__(self, canvas, gameplay_screen_ref, drawing_complete_callback=None):
         self.canvas = canvas
         self.gameplay_screen = gameplay_screen_ref # Reference to access things like debug_mode
+        self.drawing_complete_callback = drawing_complete_callback # Store the callback
         self.current_solution_steps = []
         self.visible_chars = set() # Set of (line_idx, char_idx)
 
@@ -95,21 +96,27 @@ class SolutionSymbolDisplay:
         self.clear_all_visuals() # Clear old symbols first
         
         if not self.current_solution_steps_cache or not self.canvas.winfo_exists():
+            if hasattr(self, 'drawing_complete_callback') and callable(self.drawing_complete_callback):
+                self.drawing_complete_callback() # Call even if nothing to draw or canvas gone
             return
 
         canvas_width, canvas_height = self.get_canvas_dimensions()
         
         # Check if canvas dimensions are valid before proceeding
         if canvas_width is None or canvas_height is None:
-            logging.warning("Canvas dimensions not available yet. Skipping symbol drawing.")
+            # logging.warning("Canvas dimensions not available yet. Skipping symbol drawing.") # Kept for now
             # Schedule another attempt after a short delay
             if self.canvas.winfo_exists():
                 self.canvas.after(100, self.draw_symbols)
+            # No callback here, as drawing is not complete/attempted.
             return
 
         # Dynamically adjust font size based on canvas height and number of lines
         num_lines = len(self.current_solution_steps_cache)
-        if num_lines == 0: return
+        if num_lines == 0:
+            if hasattr(self, 'drawing_complete_callback') and callable(self.drawing_complete_callback):
+                self.drawing_complete_callback() # Call if no lines to draw
+            return
 
         max_line_len = 0
         for line_str in self.current_solution_steps_cache:
@@ -165,6 +172,10 @@ class SolutionSymbolDisplay:
         
         if self.gameplay_screen.debug_mode:
             logging.info(f"SolutionSymbolDisplay: Drew {len(self.visible_chars_cache)} visible symbols. Font size: {self.font_size}. Char width: {self.char_width}.")
+
+        # All drawing operations are complete, call the callback
+        if hasattr(self, 'drawing_complete_callback') and callable(self.drawing_complete_callback):
+            self.drawing_complete_callback()
 
     def _create_character(self, line_idx, char_idx, char):
         """Create a visible character (text and shadow) on the canvas."""

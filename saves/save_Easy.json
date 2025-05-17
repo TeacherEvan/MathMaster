@@ -1,33 +1,12 @@
 {
   "level": "Easy",
-  "current_problem": "Problem 19: x + 8 = 17",
+  "current_problem": "Problem 32: 2 + x = 9",
   "current_solution_steps": [
-    "x + 8 = 17",
-    "x = 17 - 8",
-    "x = 9"
+    "2 + x = 9",
+    "x = 9 - 2",
+    "x = 7"
   ],
-  "visible_chars": [
-    [
-      0,
-      1
-    ],
-    [
-      0,
-      0
-    ],
-    [
-      0,
-      3
-    ],
-    [
-      0,
-      2
-    ],
-    [
-      0,
-      8
-    ]
-  ],
-  "incorrect_clicks": 1,
+  "visible_chars": [],
+  "incorrect_clicks": 0,
   "saved_cracks": []
 }

@@ -5,12 +5,11 @@ import datetime
 import logging
 from gameplay_screen import GameplayScreen
 from level_select_screen import LevelSelectScreen
+from stoic_quotes import get_random_quote
 from src.visual_components.welcome_screen import (
-    BrainAnimation,
     MatrixBackground,
     MathSymbols,
-    ProgressBar,
-    TitleDisplay
+    ProgressBar
 )
 
 # Set up logging
@@ -63,11 +62,12 @@ class WelcomeScreen(tk.Tk):
         self.create_layout()
         
         # Initialize visual components
-        self.brain_animation = BrainAnimation(self.canvas)
         self.matrix_background = MatrixBackground(self.canvas, MATH_PROBLEMS)
         self.math_symbols = MathSymbols(self.canvas, MATH_SYMBOLS)
         self.progress_bar = ProgressBar(self.canvas)
-        self.title_display = TitleDisplay(self.canvas)
+        
+        # Get a random stoic quote for display
+        self.stoic_quote = get_random_quote()
         
         # Draw the initial content
         self.redraw()
@@ -83,8 +83,6 @@ class WelcomeScreen(tk.Tk):
         # Create canvas for drawing
         self.canvas = tk.Canvas(self, highlightthickness=0, bg="#000000")
         self.canvas.pack(fill=tk.BOTH, expand=True)
-        
-        # We don't need frame_a or any problem text on the welcome screen
     
     def on_resize(self, event):
         """Handle window resize"""
@@ -165,7 +163,6 @@ class WelcomeScreen(tk.Tk):
                 
                 # Update visual elements
                 self.math_symbols.update_positions()
-                self.brain_animation.update_animation()
                 
                 # Schedule next frame
                 self.after(FRAME_DELAY, self.animate)
@@ -196,14 +193,75 @@ class WelcomeScreen(tk.Tk):
         # Draw math symbols
         self.math_symbols.create_elements(width, height)
         
-        # Draw brain graphic
-        self.brain_animation.draw_brain()
+        # Draw "MATH MASTER: Algebra" title at the top
+        title_font_size = max(24, min(width // 20, 36))
         
-        # Draw title and text elements
-        self.title_display.draw(width, height)
+        # Create title with glowing effect
+        for i in range(3, 0, -1):  # Create layers for glow effect
+            glow_alpha = 0.3 * i / 3
+            glow_color = self._get_hex_with_alpha("#00FF00", glow_alpha)
+            self.canvas.create_text(
+                width // 2, height // 4 - 10,
+                text="MATH MASTER: Algebra",
+                font=("Courier New", title_font_size, "bold"),
+                fill=glow_color,
+                tags="title_glow"
+            )
+        
+        # Main title text
+        self.canvas.create_text(
+            width // 2, height // 4 - 10,
+            text="MATH MASTER: Algebra",
+            font=("Courier New", title_font_size, "bold"),
+            fill="#00FF00",  # Matrix green
+            tags="title"
+        )
+        
+        # Draw stoic quote in the center 
+        quote_font_size = max(14, min(width // 35, 24))
+        quote_width = width * 0.8  # Use 80% of the width for the quote
+        
+        self.canvas.create_text(
+            width // 2, height // 2,
+            text=self.stoic_quote,
+            font=("Helvetica", quote_font_size),
+            fill="#00FF00",  # Matrix green
+            width=quote_width,
+            justify=tk.CENTER,
+            tags="stoic_quote"
+        )
+        
+        # Add "Click to continue" text below the quote
+        instruction_font_size = max(10, min(width // 60, 16))
+        self.canvas.create_text(
+            width // 2, height // 2 + 100,
+            text="Click to continue",
+            font=("Helvetica", instruction_font_size),
+            fill="#AAFFAA",
+            tags="instruction"
+        )
         
         # Draw progress bar (empty initially)
         self.progress_bar.draw(0)
+
+    def _get_hex_with_alpha(self, hex_color, alpha):
+        """Convert a hex color and alpha value to a hex color with the specified transparency"""
+        try:
+            # Extract RGB components
+            r = int(hex_color[1:3], 16)
+            g = int(hex_color[3:5], 16)
+            b = int(hex_color[5:7], 16)
+            
+            # Apply alpha against black background
+            r = int(r * alpha)
+            g = int(g * alpha)
+            b = int(b * alpha)
+            
+            # Convert back to hex
+            return f"#{r:02x}{g:02x}{b:02x}"
+        except Exception as e:
+            logging.error(f"Error in color conversion: {e}")
+            return hex_color  # Return original color on error
 
     def _get_valid_stipple(self, opacity):
         """Convert opacity (0-1) to valid stipple pattern"""

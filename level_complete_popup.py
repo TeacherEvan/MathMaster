@@ -1,186 +1,107 @@
 import tkinter as tk
-import os
+from tkinter import ttk
+import logging
 
 class LevelCompletePopup:
-    """
-    Simplified popup window that appears when a level is completed.
-    Minimizes visual effects to prevent game slowdown.
-    """
-    
     def __init__(self, parent):
-        """
-        Initialize the popup window.
-        
-        Args:
-            parent: The parent window
-        """
         self.parent = parent
-        self.popup = None
+        self.popup_window = None
+
+    def show(self, title="Level Complete", subtitle="Congratulations!", callback_next=None, callback_level_select=None, width=450, height=250):
+        if self.popup_window and self.popup_window.winfo_exists():
+            self.popup_window.lift()
+            return self.popup_window
+
+        self.popup_window = tk.Toplevel(self.parent)
+        self.popup_window.title(title)
+        self.popup_window.transient(self.parent) # Keep popup on top of parent
+        self.popup_window.grab_set() # Modal behavior
+
+        # Calculate position to center on parent
+        parent_x = self.parent.winfo_x()
+        parent_y = self.parent.winfo_y()
+        parent_width = self.parent.winfo_width()
+        parent_height = self.parent.winfo_height()
         
-        # Visual theme colors
-        self.colors = {
-            "background": "#001a00",  # Very dark green
-            "title": "#5dff5d",       # Bright green
-            "subtitle": "#90ee90",    # Light green
-            "button_bg": "#004d00",   # Dark green
-            "button_fg": "#ccffcc",   # Very light green
-            "button_hover": "#006600"  # Slightly brighter green
-        }
-    
-    def show(self, title="Level Complete!", subtitle="You've solved the math problem!", 
-             callback_next=None, callback_level_select=None, width=400, height=300):
-        """
-        Display the popup window.
-        
-        Args:
-            title: Main title to display
-            subtitle: Secondary text to display
-            callback_next: Function to call when "Next Problem" is clicked
-            callback_level_select: Function to call when "Level Select" is clicked
-            width: Width of the popup window
-            height: Height of the popup window
-        """
-        if self.popup and self.popup.winfo_exists():
-            self.popup.destroy()
+        x = parent_x + (parent_width - width) // 2
+        y = parent_y + (parent_height - height) // 2
+        self.popup_window.geometry(f"{width}x{height}+{x}+{y}")
+        self.popup_window.resizable(False, False)
+
+        # Style
+        self.popup_window.configure(bg="#2E2E2E")
+        s = ttk.Style()
+        # Base style for Popup.TButton
+        s.configure('Popup.TButton', font=('Helvetica', 12, 'bold'), padding=10, borderwidth=0, foreground='#FFFFFF', background='#0078D7', relief='raised')
+        s.map('Popup.TButton',
+            foreground=[('active', '#FFFFFF'), ('pressed', '#FFFFFF')],
+            background=[('active', '#0078D7'), ('pressed', '#005A9E')],
+            relief=[('pressed', 'sunken'), ('active', 'raised')])
+
+        # Style for Next.Popup.TButton (Green)
+        s.configure('Next.Popup.TButton', background='#28A745', foreground='#FFFFFF')
+        s.map('Next.Popup.TButton',
+            background=[('active', '#218838'), ('pressed', '#1E7E34')],
+            foreground=[('active', '#FFFFFF'), ('pressed', '#FFFFFF')])
+
+        # Style for Select.Popup.TButton (Blue)
+        s.configure('Select.Popup.TButton', background='#007BFF', foreground='#FFFFFF')
+        s.map('Select.Popup.TButton',
+            background=[('active', '#0069D9'), ('pressed', '#005CBF')],
+            foreground=[('active', '#FFFFFF'), ('pressed', '#FFFFFF')])
+
+        main_frame = ttk.Frame(self.popup_window, padding="20 20 20 20", style='TFrame')
+        main_frame.pack(expand=True, fill=tk.BOTH)
+        self.popup_window.configure(bg="#1e1e1e") # Dark background for the window itself
+        # Ensure TFrame style is configured for the main_frame's background
+        style_main_frame = ttk.Style()
+        style_main_frame.configure('TFrame', background='#1e1e1e')
+
+
+        title_label = ttk.Label(main_frame, text=title, font=("Helvetica", 20, "bold"), background='#1e1e1e', foreground='#E0E0E0')
+        title_label.pack(pady=(0, 10))
+
+        if subtitle:
+            subtitle_label = ttk.Label(main_frame, text=subtitle, font=("Helvetica", 12), background='#1e1e1e', foreground='#C0C0C0', wraplength=width-60, justify=tk.CENTER)
+            subtitle_label.pack(pady=(0, 25))
             
-        # Create popup window
-        self.popup = tk.Toplevel(self.parent)
-        self.popup.title("Success")
-        self.popup.geometry(f"{width}x{height}")
-        self.popup.configure(bg=self.colors["background"])
-        self.popup.resizable(True, True)
-        
-        # Center the popup
-        parent_x = self.parent.winfo_x() + (self.parent.winfo_width() // 2)
-        parent_y = self.parent.winfo_y() + (self.parent.winfo_height() // 2)
-        popup_x = parent_x - (width // 2)
-        popup_y = parent_y - (height // 2)
-        self.popup.geometry(f"+{popup_x}+{popup_y}")
-        
-        # Make popup modal
-        self.popup.grab_set()
-        self.popup.focus_set()
-        self.popup.transient(self.parent)
-        
-        # Create frame for content
-        content_frame = tk.Frame(self.popup, bg=self.colors["background"])
-        content_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-        
-        # Create title
-        title_label = tk.Label(
-            content_frame,
-            text=title,
-            font=("Arial", 24, "bold"),
-            fg=self.colors["title"],
-            bg=self.colors["background"]
-        )
-        title_label.pack(pady=(20, 10))
-        
-        # Create subtitle
-        subtitle_label = tk.Label(
-            content_frame,
-            text=subtitle,
-            font=("Arial", 14),
-            fg=self.colors["subtitle"],
-            bg=self.colors["background"],
-            wraplength=width-60
-        )
-        subtitle_label.pack(pady=(0, 30))
-        
-        # Create button frame
-        button_frame = tk.Frame(content_frame, bg=self.colors["background"])
-        button_frame.pack(pady=10)
-        
-        # Store callbacks for keyboard shortcuts
-        self.callback_next = callback_next
-        self.callback_level_select = callback_level_select
-        
-        # Create buttons
-        next_button = tk.Button(
-            button_frame,
-            text="Next Problem",
-            bg=self.colors["button_bg"],
-            fg=self.colors["button_fg"],
-            font=("Arial", 12),
-            relief=tk.RAISED,
-            borderwidth=2,
-            padx=15,
-            pady=5,
-            command=lambda: self.handle_button_click(callback_next)
-        )
-        next_button.grid(row=0, column=0, padx=10)
-        
-        level_select_button = tk.Button(
-            button_frame,
-            text="Level Select",
-            bg=self.colors["button_bg"],
-            fg=self.colors["button_fg"],
-            font=("Arial", 12),
-            relief=tk.RAISED,
-            borderwidth=2,
-            padx=15,
-            pady=5,
-            command=lambda: self.handle_button_click(callback_level_select)
-        )
-        level_select_button.grid(row=0, column=1, padx=10)
-        
-        # Add keyboard shortcuts
-        self.popup.bind("<Return>", lambda e: self.handle_button_click(callback_next))  # Enter key for Next
-        self.popup.bind("<Escape>", lambda e: self.handle_button_click(callback_level_select))  # Esc for Level Select
-        
-        # Add a small hint about keyboard shortcuts
-        shortcuts_label = tk.Label(
-            content_frame,
-            text="Shortcuts: Enter = Next, Esc = Level Select",
-            font=("Arial", 8),
-            fg=self.colors["subtitle"],
-            bg=self.colors["background"]
-        )
-        shortcuts_label.pack(side=tk.BOTTOM, pady=5)
-        
-        # Ensure popup stays on top
-        self.popup.attributes('-topmost', True)
-        self.popup.update()
-        self.popup.attributes('-topmost', False)
-        
-        # Return the popup for reference
-        return self.popup
-        
-    def handle_button_click(self, callback):
-        """Handle button click event"""
-        if callable(callback):
-            callback()
-        # No more animations to clean up, so we can just destroy the popup
-        if self.popup and self.popup.winfo_exists():
-            self.popup.destroy()
+        button_frame = ttk.Frame(main_frame, style='TFrame')
+        button_frame.pack(fill=tk.X, pady=(10,0))
+        button_frame.grid_columnconfigure(0, weight=1)
+        button_frame.grid_columnconfigure(1, weight=1)
 
-def show_demo():
-    """Function to demonstrate the popup"""
-    root = tk.Tk()
-    root.title("Demo")
-    root.geometry("800x600")
-    root.configure(bg="#000")
-    
-    def next_action():
-        print("Next Problem selected")
-        
-    def level_select_action():
-        print("Level Select selected")
-        
-    def show_popup():
-        popup = LevelCompletePopup(root)
-        popup.show(
-            title="Level Complete!",
-            subtitle="You've solved the equation brilliantly! Your mathematical skills are improving.",
-            callback_next=next_action,
-            callback_level_select=level_select_action
-        )
-    
-    # Create demo button
-    btn = tk.Button(root, text="Show Popup", command=show_popup)
-    btn.pack(pady=100)
-    
-    root.mainloop()
 
-if __name__ == "__main__":
-    show_demo() 
+        def on_next():
+            logging.info("'Next Level' chosen from level complete popup.")
+            if callback_next:
+                callback_next()
+            self.close()
+
+        def on_level_select():
+            logging.info("'Level Select' chosen from level complete popup.")
+            if callback_level_select:
+                callback_level_select()
+            self.close()
+
+        next_button = ttk.Button(button_frame, text="Next Level", command=on_next, style='Next.Popup.TButton', width=18)
+        next_button.grid(row=0, column=0, padx=10, sticky='ew')
+
+        level_select_button = ttk.Button(button_frame, text="Level Select", command=on_level_select, style='Select.Popup.TButton', width=18)
+        level_select_button.grid(row=0, column=1, padx=10, sticky='ew')
+        
+        button_frame.pack(pady=10, fill=tk.X)
+
+        self.popup_window.focus_set()
+        self.popup_window.lift()
+        self.popup_window.attributes("-topmost", True)
+        self.popup_window.after(100, lambda: self.popup_window.attributes("-topmost", False))
+
+        return self.popup_window
+
+    def close(self):
+        if self.popup_window and self.popup_window.winfo_exists():
+            self.popup_window.destroy()
+            self.popup_window = None
+            if self.parent and self.parent.winfo_exists():
+                 self.parent.grab_release() # Correctly release grab
+                 self.parent.focus_set() # Return focus to parent

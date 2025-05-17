@@ -2,6 +2,7 @@ import tkinter as tk
 import random
 import math
 import logging
+import time
 
 class ExplosionManager:
     def __init__(self, canvas):
@@ -23,6 +24,21 @@ class ExplosionManager:
         
         # Vibrant colors - can be expanded
         colors = ["#FF0000", "#FF4500", "#FFA500", "#FFD700", "#FFFF00", "#FF69B4", "#FF1493"]
+
+        # Artwork properties
+        artwork_text_content = "POW!"
+        artwork_font_size = int(base_size * 0.8)
+        artwork_color = "#FFFFFF"
+        artwork_duration_ms = 2000
+
+        # Create artwork text
+        artwork_id = self.canvas.create_text(
+            x, y, 
+            text=artwork_text_content, 
+            font=("Comic Sans MS", artwork_font_size, "bold"), # Using a comic-style font
+            fill=artwork_color, 
+            anchor=tk.CENTER
+        )
 
         for _ in range(num_particles):
             angle = random.uniform(0, 2 * math.pi)
@@ -52,7 +68,9 @@ class ExplosionManager:
             'center_y': y,
             'particles': particles,
             'start_time': self.canvas.after(0, lambda: None), # Using time.time() might be better
-            'duration_ms': duration_ms
+            'duration_ms': duration_ms,
+            'artwork_id': artwork_id,
+            'artwork_remove_time': time.time() * 1000 + artwork_duration_ms # Time in ms for removal
         }
         self.explosions.append(explosion_data)
         
@@ -77,11 +95,21 @@ class ExplosionManager:
             # elapsed_ms = current_time_ms - explosion['start_time'] # This doesn't work as expected with after(0)
             # A simple frame-based life decay is easier here
 
-            if not explosion['particles']:
+            # Check artwork removal for this explosion
+            if explosion.get('artwork_id') and time.time() * 1000 >= explosion.get('artwork_remove_time', float('inf')):
+                try:
+                    if self.canvas.winfo_exists() and explosion['artwork_id'] in self.canvas.find_all():
+                        self.canvas.delete(explosion['artwork_id'])
+                    explosion['artwork_id'] = None # Mark as removed
+                    logging.info(f"Artwork for explosion at ({explosion['center_x']},{explosion['center_y']}) removed.")
+                except tk.TclError:
+                    explosion['artwork_id'] = None # Ensure it's marked removed on error
+
+            if not explosion['particles'] and not explosion.get('artwork_id'): # Also check if artwork is gone
                 self.explosions.remove(explosion)
                 continue
 
-            active_explosions_exist = True # Found at least one explosion with particles
+            active_explosions_exist = True # Found at least one explosion with particles or artwork
 
             for p in explosion['particles']:
                 p['life_remaining'] -= 30 # Approximate ms per frame (adjust as needed for FRAME_DELAY)
@@ -121,7 +149,6 @@ class ExplosionManager:
                         # Optional: Could fade color too, but let's keep it simple for now
                     except tk.TclError: # Item might have been deleted
                         p['id'] = None # Mark as needing recreation if we had logic for that
-                        particles_to_remove_from_explosion.append(p)
 
 
             # Remove dead particles from this specific explosion
@@ -129,12 +156,12 @@ class ExplosionManager:
                 if dead_p in explosion['particles']:
                     explosion['particles'].remove(dead_p)
             
-            # If an explosion has no more particles, remove it from the main list
-            if not explosion['particles']:
-                if explosion in self.explosions: # Check again, might have been removed if all died in one go
+            # If an explosion has no more particles, AND its artwork is gone, remove it from the main list
+            if not explosion['particles'] and not explosion.get('artwork_id'):
+                if explosion in self.explosions: # Check again
                     self.explosions.remove(explosion)
 
-        if self.explosions: # If there are still active explosions
+        if self.explosions: # If there are still active explosions (particles or artwork)
             self.canvas.after(30, self._animate_explosions) # Adjust frame rate (e.g., ~33 FPS)
         else:
             logging.info("All explosions finished.")

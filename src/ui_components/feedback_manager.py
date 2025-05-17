@@ -15,36 +15,59 @@ class FeedbackManager:
         if self.feedback_bg_id:
             self.canvas.delete(self.feedback_bg_id)
 
-        # Position feedback at the bottom center
+        # Position feedback slightly higher and centered
         x = self.width / 2
-        y = self.height - 50  # Adjust as needed
+        y = self.height - 70  # Moved up a bit
 
-        # Create a semi-transparent background for the text
-        text_bbox = self.canvas.bbox(self.canvas.create_text(x, y, text=message, font=("Arial", 14), fill="white"))
+        # Determine colors based on message content (simple check for "Unlocked")
+        is_positive = "unlocked" in message.lower() or "complete" in message.lower()
+        
+        bg_fill = "#2E7D32" if is_positive else "#C62828"  # Dark Green for positive, Dark Red for negative/other
+        bg_outline = "#4CAF50" if is_positive else "#E53935" # Brighter Green/Red for outline
+        text_fill = "#FFFFFF" # White text
+
+        # Create a temporary text item to get bounding box for background sizing
+        # Use a slightly larger font for bbox calculation to ensure padding
+        temp_font_for_bbox = ("Courier New", 18, "bold")
+        try:
+            temp_text_item = self.canvas.create_text(x, y, text=message, font=temp_font_for_bbox, fill="white", anchor=tk.S)
+            text_bbox = self.canvas.bbox(temp_text_item)
+            self.canvas.delete(temp_text_item) # Delete temporary item
+        except tk.TclError:
+            text_bbox = None # Canvas might be gone
+
         if text_bbox:
-             # Add padding
             x1, y1, x2, y2 = text_bbox
-            padding = 10
+            padding = 15 # Increased padding
+            
             self.feedback_bg_id = self.canvas.create_rectangle(
                 x1 - padding, y1 - padding, x2 + padding, y2 + padding,
-                fill="#333333",  # Dark gray background
-                outline="#555555", # Slightly lighter border
-                stipple="gray50" # Make it a bit transparent
+                fill=bg_fill,
+                outline=bg_outline,
+                width=2 # Thicker outline
             )
-            self.canvas.tag_raise(self.feedback_bg_id) # Ensure bg is behind text if created after, otherwise lower
+            self.canvas.tag_lower(self.feedback_bg_id)
 
-        self.feedback_text_id = self.canvas.create_text(
-            x, y,
-            text=message,
-            font=("Arial", 16, "bold"),
-            fill="#FFFF00",  # Bright yellow for visibility
-            justify=tk.CENTER,
-            anchor=tk.S # Anchor to the south (bottom) of the text
-        )
-        self.canvas.tag_raise(self.feedback_text_id) # ensure text is on top
+        # Create the actual feedback text
+        try:
+            self.feedback_text_id = self.canvas.create_text(
+                x, y,
+                text=message,
+                font=("Courier New", 16, "bold"), # Changed font
+                fill=text_fill,
+                justify=tk.CENTER,
+                anchor=tk.S # Anchor to the south (bottom) of the text, position y is bottom
+            )
+            if self.feedback_bg_id: # Ensure text is on top of the background if bg exists
+                 self.canvas.tag_raise(self.feedback_text_id, self.feedback_bg_id)
+            else: # Otherwise, just raise it generally
+                 self.canvas.tag_raise(self.feedback_text_id)
+        except tk.TclError: 
+            self.feedback_text_id = None # Canvas might be gone
 
         # Schedule message removal
-        self.canvas.after(duration, self.clear_feedback)
+        if self.feedback_text_id or self.feedback_bg_id: # Only schedule if something was created
+            self.canvas.after(duration, self.clear_feedback)
 
     def clear_feedback(self):
         """Clears the feedback message from the canvas."""
