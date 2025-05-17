@@ -472,10 +472,8 @@ class WormAnimation:
             # Get symbol info
             symbol_id = symbol.get('id')
             symbol_char = symbol.get('char', '')
-            is_placeholder = symbol.get('is_placeholder', False)
-
-            if not symbol_id or symbol_id == -1 or is_placeholder: # Check for placeholder
-                logging.info(f"Worm {worm['id']} interacted with placeholder or invalid symbol data: {symbol}")
+            
+            if not symbol_id:
                 return
                 
             # Make the symbol shake
@@ -495,9 +493,6 @@ class WormAnimation:
     
     def _shake_symbol(self, symbol_id):
         """Make a solution symbol shake briefly"""
-        if symbol_id == -1: # Explicitly check for placeholder ID
-            logging.warning(f"_shake_symbol called with placeholder ID: {symbol_id}. Skipping shake.")
-            return
         try:
             # Don't shake if already shaking
             if symbol_id in self.symbol_shake_ids:

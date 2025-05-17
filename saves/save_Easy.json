@@ -1,9 +1,9 @@
 {
   "level": "Easy",
-  "current_problem": "Problem 43: x + 6 = 15",
+  "current_problem": "Problem 19: x + 8 = 17",
   "current_solution_steps": [
-    "x + 6 = 15",
-    "x = 15 - 6",
+    "x + 8 = 17",
+    "x = 17 - 8",
     "x = 9"
   ],
   "visible_chars": [
@@ -13,11 +13,19 @@
     ],
     [
       0,
-      9
+      0
     ],
     [
       0,
-      0
+      3
+    ],
+    [
+      0,
+      2
+    ],
+    [
+      0,
+      8
     ]
   ],
   "incorrect_clicks": 1,

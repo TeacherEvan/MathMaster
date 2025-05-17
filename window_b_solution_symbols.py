@@ -184,7 +184,7 @@ class SolutionSymbolDisplay:
             text_center_x + shadow_offset_x,
             text_center_y + shadow_offset_y,
             text=char, font=self.font, fill=self.shadow_color,
-            anchor=tk.CENTER, tags=shadow_tag
+            anchor=tk.CENTER, tags=(shadow_tag, "solution_text_ssd")
         )
         self.drawn_symbol_items[(line_idx, char_idx, 'shadow')] = shadow_id
         
@@ -192,7 +192,7 @@ class SolutionSymbolDisplay:
         text_id = self.canvas.create_text(
             text_center_x, text_center_y,
             text=char, font=self.font, fill=self.text_color,
-            anchor=tk.CENTER, tags=text_tag
+            anchor=tk.CENTER, tags=(text_tag, "solution_text_ssd")
         )
         self.drawn_symbol_items[(line_idx, char_idx, 'text')] = text_id
 
@@ -520,23 +520,54 @@ class SolutionSymbolDisplay:
                     return center_x, center_y
             except tk.TclError:
                 # Item might not exist anymore, fall back to calculation
+                logging.warning(f"TclError getting bbox for drawn symbol at ({line_idx}, {char_idx}), falling back to stored position")
                 pass
+        
+        # Next, try checking for canvas item by tag as a fallback
+        try:
+            text_tag = f"ssd_{line_idx}_{char_idx}_text"
+            items = self.canvas.find_withtag(text_tag)
+            if items:
+                bbox = self.canvas.bbox(items[0])
+                if bbox:
+                    center_x = (bbox[0] + bbox[2]) / 2
+                    center_y = (bbox[1] + bbox[3]) / 2
+                    logging.info(f"Found symbol by tag at ({line_idx}, {char_idx}): ({center_x}, {center_y})")
+                    return center_x, center_y
+        except tk.TclError:
+            logging.warning(f"TclError getting bbox by tag for symbol at ({line_idx}, {char_idx})")
+            pass
                 
         # Check if we have a stored position
         if (line_idx, char_idx) in self.character_positions:
             center_x, center_y = self.character_positions[(line_idx, char_idx)]
             logging.info(f"Using stored position for symbol at ({line_idx}, {char_idx}): ({center_x}, {center_y})")
             return center_x, center_y
-            
-        # Fall back to calculation
+        
+        # Do a fresh calculation if all else fails
+        logging.warning(f"No position info found for ({line_idx}, {char_idx}), calculating from scratch")
         canvas_width, canvas_height = self.get_canvas_dimensions()
-        if canvas_width is None:
+        if canvas_width is None or canvas_height is None:
+            logging.error(f"Canvas dimensions not available for coordinate calculation at ({line_idx}, {char_idx})")
             return canvas_width / 2 if canvas_width else 300, canvas_height / 2 if canvas_height else 200 # Fallback
 
         num_steps_to_draw = min(len(self.current_solution_steps_cache), self.max_lines_displayable)
-        if num_steps_to_draw == 0 or line_idx >= num_steps_to_draw :
-             return canvas_width / 2, canvas_height / 2 # Fallback if line_idx is out of displayable range
+        if num_steps_to_draw == 0 or line_idx >= num_steps_to_draw:
+            logging.error(f"Line index {line_idx} is out of displayable range (max: {num_steps_to_draw})")
+            return canvas_width / 2, canvas_height / 2 # Fallback if line_idx is out of displayable range
 
+        # Ensure line_idx is within bounds before accessing current_solution_steps
+        if line_idx < 0 or line_idx >= len(self.current_solution_steps_cache):
+            logging.error(f"SolutionSymbolDisplay: get_symbol_coordinates - line_idx {line_idx} out of bounds.")
+            return canvas_width / 2, canvas_height / 2
+
+        line_text = self.current_solution_steps_cache[line_idx]
+        
+        if char_idx < 0 or char_idx >= len(line_text):
+            logging.error(f"SolutionSymbolDisplay: get_symbol_coordinates - char_idx {char_idx} out of bounds for line.")
+            return canvas_width / 2, canvas_height / 2
+
+        # Calculate appropriate spacing
         top_offset_factor = 1/3
         drawing_area_height = canvas_height * (1 - top_offset_factor)
         calculated_line_height = drawing_area_height / (num_steps_to_draw + 1)
@@ -549,26 +580,17 @@ class SolutionSymbolDisplay:
 
         # Y position for the line (center of the character vertically)
         y_center = (canvas_height * top_offset_factor) + (calculated_line_height * (line_idx + 1))
-        
-        # Ensure line_idx is within bounds before accessing current_solution_steps
-        if line_idx < 0 or line_idx >= len(self.current_solution_steps_cache):
-            logging.error(f"SolutionSymbolDisplay: get_symbol_coordinates - line_idx {line_idx} out of bounds.")
-            return canvas_width / 2, canvas_height / 2
-
-        line_text = self.current_solution_steps_cache[line_idx]
-        
-        if char_idx < 0 or char_idx >= len(line_text):
-            logging.error(f"SolutionSymbolDisplay: get_symbol_coordinates - char_idx {char_idx} out of bounds for line.")
-            return canvas_width / 2, canvas_height / 2
 
         total_text_width = len(line_text) * effective_char_width
         x_start_for_line = (canvas_width - total_text_width) / 2
         if x_start_for_line < 10: x_start_for_line = 10
 
         # X coordinate for the center of the character
-        # The text is drawn with anchor="w", so char_x is the left edge.
         char_left_edge_x = x_start_for_line + (char_idx * effective_char_width)
         x_center = char_left_edge_x + (effective_char_width / 2)
+        
+        # Save this calculated position for future reference
+        self.character_positions[(line_idx, char_idx)] = (x_center, y_center)
         
         logging.info(f"Calculated position for symbol at ({line_idx}, {char_idx}): ({x_center}, {y_center})")
         return x_center, y_center

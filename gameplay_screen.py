@@ -674,17 +674,24 @@ class GameplayScreen(tk.Toplevel):
             self.after(1000, self._update_worm_solution_symbols) # Try again
             return
             
+        # Ensure solution_symbol_display has drawn symbols before trying to find them
+        if not self.solution_symbol_display.character_positions:
+            logging.info("Solution symbols not yet positioned. Will retry worm symbols update.")
+            self.after(250, self._update_worm_solution_symbols) # Shortened retry from 1000ms
+            return
+            
         # Check if canvas is ready and has dimensions
         canvas_width, canvas_height = self.solution_symbol_display.get_canvas_dimensions()
         if canvas_width is None or canvas_height is None or canvas_width <= 1 or canvas_height <= 1:
             logging.info("Canvas not yet sized properly for worm solution symbols update. Will retry.")
-            self.after(1000, self._update_worm_solution_symbols)
+            self.after(250, self._update_worm_solution_symbols) # Shortened retry from 1000ms
             return
             
         # Ensure solution_symbol_display has drawn symbols before trying to find them
-        if not self.solution_symbol_display.character_positions:
-            logging.info("Solution symbols not yet drawn. Will retry worm symbols update.")
-            self.after(1000, self._update_worm_solution_symbols)
+        # This check is somewhat redundant due to the one above, but good for belt-and-suspenders
+        if not self.solution_symbol_display.character_positions: # Check again, just in case.
+            logging.info("Solution symbols (second check) not yet positioned. Will retry worm symbols update.")
+            self.after(250, self._update_worm_solution_symbols) # Shortened retry from 1000ms
             return
 
         # Reset solution symbols list for worms
@@ -692,6 +699,7 @@ class GameplayScreen(tk.Toplevel):
         
         # Keep track of warnings to avoid log flooding
         missing_tags = set()
+        found_tags = 0
         
         # Loop through all characters in current solution steps
         for line_idx, line in enumerate(self.current_solution_steps):
@@ -699,39 +707,70 @@ class GameplayScreen(tk.Toplevel):
                 if not char_val.strip(): # Skip spaces for worm targeting
                     continue
 
-                # Get its canvas ID and position from SolutionSymbolDisplay
-                char_tag_text = f"ssd_{line_idx}_{char_idx}_text"
-                items = self.solution_symbol_display.canvas.find_withtag(char_tag_text)
-                
+                # Get precise coordinates for this symbol
                 coords = self.solution_symbol_display.get_symbol_coordinates(line_idx, char_idx)
                 
+                # Get canvas item ID if available
+                char_tag_text = f"ssd_{line_idx}_{char_idx}_text"
+                items = []
+                
+                try:
+                    items = self.solution_symbol_display.canvas.find_withtag(char_tag_text)
+                except tk.TclError:
+                    # Canvas might be in a transient state
+                    pass
+                
+                # Check if we found a valid canvas item
                 if items:
                     symbol_canvas_id = items[0]
+                    found_tags += 1
                     
                     is_visible_to_player = (line_idx, char_idx) in self.visible_chars
                     
                     self.solution_symbols_data_for_worms.append({
-                        'id': symbol_canvas_id, # This is the canvas item ID of the text
+                        'id': symbol_canvas_id,
                         'position': coords,
                         'char': char_val,
                         'line_idx': line_idx,
                         'char_idx': char_idx,
-                        'visible_to_player': is_visible_to_player # New field: if player can see it
+                        'visible_to_player': is_visible_to_player
                     })
                 else:
-                    # Add to the set of missing tags instead of logging each one
-                    missing_tags.add(char_tag_text)
+                    # We may not have found a canvas item for this character
+                    # but we still have valid coordinates from the SolutionSymbolDisplay
+                    # Add it with a placeholder ID that the worm can still use for position targeting
+                    if coords and coords[0] is not None and coords[1] is not None:
+                        missing_tags.add(char_tag_text)
+                        # Still add to worm data but with placeholder ID
+                        self.solution_symbols_data_for_worms.append({
+                            'id': -1,  # Placeholder ID
+                            'position': coords,
+                            'char': char_val,
+                            'line_idx': line_idx,
+                            'char_idx': char_idx,
+                            'visible_to_player': (line_idx, char_idx) in self.visible_chars,
+                            'is_placeholder': True  # Flag as placeholder to avoid operations requiring a real canvas ID
+                        })
 
         # Log a summary of missing tags instead of individual messages
-        if missing_tags and len(self.solution_symbols_data_for_worms) == 0:
-            logging.warning(f"No symbols found for worms. Canvas items may not be drawn yet. Will retry.")
-            self.after(1000, self._update_worm_solution_symbols)
-            return
-        elif missing_tags and self.debug_mode:
-            logging.warning(f"_update_worm_solution_symbols: Could not find {len(missing_tags)} canvas items")
+        if missing_tags:
+            if len(self.solution_symbols_data_for_worms) == 0:
+                logging.warning(f"No symbols found for worms. Canvas items may not be drawn yet. Will retry.")
+                self.after(1000, self._update_worm_solution_symbols)
+                return
+            elif self.debug_mode:
+                logging.warning(f"_update_worm_solution_symbols: Could not find {len(missing_tags)} canvas items, but found {found_tags} valid items")
+        
+        # Log success on finding all symbols
+        if found_tags > 0 and not missing_tags and self.debug_mode:
+            logging.info(f"_update_worm_solution_symbols: Successfully found all {found_tags} symbol canvas items")
             
         # Update worm animation with current symbols
-        self.worm_animation.update_solution_symbols(self.solution_symbols_data_for_worms)
+        if self.worm_animation and hasattr(self.worm_animation, 'update_solution_symbols'):
+            try:
+                self.worm_animation.update_solution_symbols(self.solution_symbols_data_for_worms)
+            except Exception as e:
+                logging.error(f"Error updating worm solution symbols: {e}")
         
         # Schedule next update
         self.after(2000, self._update_worm_solution_symbols)  # Update every 2 seconds
@@ -1118,6 +1157,9 @@ class GameplayScreen(tk.Toplevel):
                 
             # Ensure redraw happens after canvas is sized and data is ready
             if self.solution_symbol_display:
+                # Force complete clear of previous symbols before drawing new ones
+                self.solution_symbol_display.clear_all_visuals()
+                logging.info("Explicitly cleared Window B before drawing new problem")
                 self.after(50, lambda: self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars))
                 
             self.after(100, self.auto_reveal_spaces) # Auto-reveal initial spaces
@@ -1745,6 +1787,7 @@ class GameplayScreen(tk.Toplevel):
                 # Clear game state and load new problem
                 self.clear_saved_game()
                 self.clear_all_cracks()
+                logging.info("Retry: About to load new problem")
                 self.load_new_problem()
                 self.game_over = False
                 # Reset game state
@@ -1754,6 +1797,7 @@ class GameplayScreen(tk.Toplevel):
                 # Re-initialize falling symbols animation
                 if hasattr(self, 'falling_symbols') and self.falling_symbols:
                     self.falling_symbols.stop_animation()
+                logging.info("Retry: Creating new falling symbols")
                 self.falling_symbols = None
                 self.falling_symbols = FallingSymbols(self.symbol_canvas, list("0123456789Xx +-=÷×*/()"))
                 self.after(100, self.falling_symbols.start_animation)
@@ -1772,16 +1816,34 @@ class GameplayScreen(tk.Toplevel):
                 self.game_over = False
                 self.visible_chars = set()
                 self.incorrect_clicks = 0
+                self.currently_targeted_by_worm = None
+                self.transported_by_worm_symbols = []  # Clear tracked worm symbols
                 
                 # Stop existing animation
+                logging.info("Next: Stopping existing animations")
                 if hasattr(self, 'falling_symbols') and self.falling_symbols:
                     self.falling_symbols.stop_animation()
                 self.falling_symbols = None
                 
+                # Reset worm animation if it exists
+                if hasattr(self, 'worm_animation') and self.worm_animation:
+                    logging.info("Next: Stopping worm animation and clearing worms.")
+                    self.worm_animation.stop_animation()
+                    self.worm_animation.clear_worms() # Add this line
+                    # Reset worm-specific state variables related to GameplayScreen
+                    self.currently_targeted_by_worm = None
+                    self.transported_by_worm_symbols = []
+                    self.solution_symbols_data_for_worms = [] # This will be repopulated by _update_worm_solution_symbols
+                    # Force re-initialization of worm animation data for the new problem
+                    self.after(200, self._update_worm_solution_symbols) # Shortened delay from 500ms
+                
                 # Load new problem
+                logging.info("Next: About to load new problem")
                 self.load_new_problem()
+                logging.info(f"Next: New problem loaded: '{self.current_problem}'")
                 
                 # Start new animation
+                logging.info("Next: Creating new falling symbols")
                 self.falling_symbols = FallingSymbols(self.symbol_canvas, list("0123456789Xx +-=÷×*/()"))
                 self.after(100, self.falling_symbols.start_animation)
                 logging.info("Starting next problem")
@@ -1792,19 +1854,28 @@ class GameplayScreen(tk.Toplevel):
             logging.error(traceback.format_exc())
             # Try to recover by loading a new problem if possible
             try:
+                logging.info("Attempting recovery from popup handling error")
                 self.clear_saved_game()
                 self.clear_all_cracks()
                 self.game_over = False
                 self.visible_chars = set()
                 self.incorrect_clicks = 0
-                self.load_new_problem()
+                self.currently_targeted_by_worm = None
+                
+                # Stop any existing animations
                 if hasattr(self, 'falling_symbols') and self.falling_symbols:
                     self.falling_symbols.stop_animation()
+                if hasattr(self, 'worm_animation') and self.worm_animation:
+                    self.worm_animation.stop_animation()
+                
+                # Reinitialize and load
+                self.load_new_problem()
                 self.falling_symbols = FallingSymbols(self.symbol_canvas, list("0123456789Xx +-=÷×*/()"))
                 self.after(100, self.falling_symbols.start_animation)
                 logging.info("Recovered from error by loading new problem")
             except Exception as recovery_error:
                 logging.error(f"Failed to recover from error: {str(recovery_error)}")
+                logging.error(traceback.format_exc())
                 # Last resort - return to level select
                 if self.parent and self.parent.winfo_exists():
                     self.parent.deiconify()
@@ -1836,26 +1907,49 @@ class GameplayScreen(tk.Toplevel):
         """Handle level completion"""
         logging.info(f"Level {self.current_level} completed!")
         
-        # Clear saved game file
-        self.clear_saved_game()
-        
-        # Ensure lock is fully unlocked
-        if self.lock_animation:
-            self.lock_animation.celebrate_problem_solved()
-        
-        # Stop gameplay-specific timers
-        self.game_is_active = False
-        
-        # If worm animation exists, make them celebrate
-        if hasattr(self, 'worm_animation') and self.worm_animation:
-            self.worm_animation.celebrate(duration=1000)
-        
-        # Remove any cracks from the error animation
-        if self.error_animation:
-            self.error_animation.clear_all_cracks()
-        
-        # Display popup immediately
-        self.show_level_complete_popup()
+        try:
+            # Clear saved game file
+            self.clear_saved_game()
+            
+            # Ensure lock is fully unlocked
+            if self.lock_animation:
+                try:
+                    self.lock_animation.celebrate_problem_solved()
+                except Exception as e:
+                    logging.error(f"Error during lock celebration: {e}")
+            
+            # Stop gameplay-specific timers
+            self.game_is_active = False
+            
+            # If worm animation exists, make them celebrate
+            if hasattr(self, 'worm_animation') and self.worm_animation:
+                try:
+                    self.worm_animation.celebrate(duration=1000)
+                except Exception as e:
+                    logging.error(f"Error during worm celebration: {e}")
+            
+            # Remove any cracks from the error animation
+            if self.error_animation:
+                try:
+                    self.error_animation.clear_all_cracks()
+                except Exception as e:
+                    logging.error(f"Error clearing cracks: {e}")
+            
+            # Reset worm targets and other states
+            self.currently_targeted_by_worm = None
+            
+            # Display popup immediately
+            logging.info("About to show level complete popup")
+            self.show_level_complete_popup()
+            
+        except Exception as e:
+            logging.error(f"Critical error in level_complete: {e}")
+            logging.error(traceback.format_exc())
+            # Try to show popup anyway as a last resort
+            try:
+                self.show_level_complete_popup()
+            except Exception as popup_error:
+                logging.error(f"Could not show level complete popup: {popup_error}")
 
     def show_level_complete_popup(self):
         """Displays the enhanced 'Level Complete' pop-up window"""

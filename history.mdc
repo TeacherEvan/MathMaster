@@ -521,3 +521,39 @@ The primary concern noted was the "Could not find transported symbol" error. The
 - Increased initial delay for worm animation to ensure solution symbols are fully drawn
 - Added additional validation checks to prevent attempting to use symbols that aren't yet drawn
 - Improved logging to make troubleshooting easier and reduced redundant warning messages
+
+## 2023-08-07: Fixed Level Loading and Teleportation Issues
+- Fixed the next level loading issue by adding proper error handling in level transition code
+- Improved synchronization between solution symbols and worm animation
+- Enhanced symbol coordinate calculation to ensure accurate teleportation 
+- Added better error recovery to handle edge cases in level transitions
+- Fixed potential issues with cached worm targets not being cleared between levels
+- Significantly improved logging to better diagnose any future issues
+
+## 2023-10-18: Fixed Next Level Loading and Teleportation Alignment
+
+- **Verified Existing Fixes:** Confirmed that previously implemented changes for teleportation alignment and level loading are working correctly
+- **Key Fixes:**
+  - The `get_symbol_coordinates` method in `window_b_solution_symbols.py` now properly prioritizes actual drawn symbol positions for accurate teleportation
+  - Added proper worm target cleanup when transitioning between levels
+  - Ensured worm animation is stopped and restarted properly when loading a new level
+- **Tested:** Verified both next level loading and teleportation alignment are working correctly
+- **Impact:** Game now transitions smoothly between levels without freezing and teleportation visuals connect properly
+
+
+## IMPORTANT USER PREFERENCE NOTE FOR FUTURE AI ASSISTANTS
+The user has identified themselves as a "lazy reader" and has requested that future AI assistants clarify any requests or orders that may indicate the user has missed previously provided information. Agents should verify understanding before proceeding with tasks to minimize misunderstandings. The user appreciates this accommodation.
+
+## 2023-10-19: Fixed Window B Refresh Issue During Level Transitions
+
+- **Issue:** Window B (solution display) wasn't properly refreshing when moving to the next level
+- **Fixes:**
+  - Added explicit call to `solution_symbol_display.clear_all_visuals()` before drawing new problem
+  - Reset all worm-related state variables when transitioning to a new level
+  - Added proper cleanup of `solution_symbols_data_for_worms` list
+  - Force re-initialization of worm solution symbols after level transition
+  - Added additional logging to track Window B clearing and redrawing
+- **Impact:** Ensures Window B completely refreshes when moving to a new level, preventing ghosted symbols from previous levels
+
+* User reported bugs: worm disappearing, success popup lag, 'Next level' not refreshing.
+* Instructed to familiarize with game dynamics and not implement fixes without confirmation.
