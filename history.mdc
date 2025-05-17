@@ -444,3 +444,56 @@ The primary concern noted was the "Could not find transported symbol" error. The
 * Enhanced `WormsWindow_B.py`: Worms now flicker with LSD colors when transporting a symbol.
 * Enhanced `Teleport_SymblDisplay_C_B.py`: Added an initial particle burst to portals and made spiraling portal particles more dynamic.
 * Modified `level_complete_popup.py`: Reduced decorative elements (border glow steps from 3 to 2, background math symbols from 10 to 7).
+
+### {{शंकर}} - 2024-07-28
+*   **Feature**: Enhanced symbol teleportation in `Teleport_SymblDisplay_C_B.py` to include a "long streak effect" by drawing a tapering trail of gold lines behind the moving symbol.
+*   **Analysis**: Confirmed that solution symbols in Window B are correctly designed to be invisible until revealed (no code change needed).
+*   **Investigation**: Reviewed user-provided terminal output; it showed normal debug information and no errors related to initial symbol visibility.
+
+## 2024-08-10: Fixed Teleportation Alignment
+
+- **Issue:** Teleportation animation between Window C (symbol selection) and Window B (solution display) was misaligned, not connecting precisely to the stationary symbols in Window B.
+- **Fix:** 
+  - Updated `teleport_symbol` and `_handle_correct_teleport` methods to use exact coordinates from the target symbol
+  - Replaced curved/arced animation paths with precise straight-line particle movement
+  - Implemented `_launch_precise_particle` method with consistent particle size and direct linear path
+  - Changed portal creation timing to ensure proper portal placement directly on the target symbol
+  - Added debug logging for teleport position coordinates
+- **Impact:** Teleportation visuals now precisely align with the target symbol location for correct visual continuity
+
+## 2024-08-10: Fixed SolutionSymbolDisplay AttributeError and Visibility
+
+- **Issue 1:** Error `AttributeError: 'SolutionSymbolDisplay' object has no attribute 'drawn_symbol_items'` occurring in the `draw_symbols` method when trying to call `clear()` on an uninitialized attribute.
+- **Fix 1:** Added initialization of `drawn_symbol_items` dictionary in the `__init__` method of `SolutionSymbolDisplay` class in `window_b_solution_symbols.py`.
+- **Additional Fix:** Added missing font parameters (`font_family`, `font_weight`, and `line_spacing_multiplier_dynamic`) to properly initialize text rendering properties.
+
+- **Issue 2:** Green diagnostic text for invisible solution symbols in Window B was visible, making solution steps apparent to players before they should be.
+- **Fix 2:** Modified the `draw_symbols` method to render invisible characters with the background color instead of diagnostic green, ensuring they remain interactive for worms but invisible to players.
+
+## 2024-08-10: Fixed Auto-Reveal Spaces Feature
+
+- **Issue:** Error `AttributeError: 'GameplayScreen' object has no attribute 'auto_reveal_spaces_enabled'` occurring after fixing the click handler.
+- **Root Cause:** The simplified `find_next_required_char` method referenced `auto_reveal_spaces_enabled` attribute which wasn't defined in the `GameplayScreen` class.
+- **Fix:** Added `auto_reveal_spaces_enabled = True` to the `GameplayScreen` initialization to control whether spaces are automatically revealed.
+- **Impact:** Eliminated errors and restored proper space auto-reveal functionality for smoother gameplay.
+
+## 2024-08-10: Fixed Gameplay Click Handling Errors
+
+- **Issue:** Errors occurring when clicking on symbols ("too many values to unpack (expected 3)" errors in the console)
+- **Root Cause:** The `find_next_required_char` method was returning a list of tuples, but the code in `handle_canvas_c_click` and `auto_reveal_spaces` was expecting a single tuple
+- **Fix:** 
+  - Updated `find_next_required_char` to return a single tuple (line_idx, char_idx, char) or None
+  - Modified `auto_reveal_spaces` method to handle the new return format
+  - Simplified the character finding logic to make the code more maintainable
+- **Impact:** Eliminated console errors and restored proper symbol selection functionality
+
+## 2024-08-10: Fixed Teleportation Alignment
+
+- **Issue:** Teleportation animation between Window C (symbol selection) and Window B (solution display) was misaligned, not connecting precisely to the stationary symbols in Window B.
+- **Fix:** 
+  - Updated `teleport_symbol` and `_handle_correct_teleport` methods to use exact coordinates from the target symbol
+  - Replaced curved/arced animation paths with precise straight-line particle movement
+  - Implemented `_launch_precise_particle` method with consistent particle size and direct linear path
+  - Changed portal creation timing to ensure proper portal placement directly on the target symbol
+  - Added debug logging for teleport position coordinates
+- **Impact:** Teleportation visuals now precisely align with the target symbol location for correct visual continuity

@@ -1,30 +1,12 @@
 {
   "level": "Division",
-  "current_problem": "296/x=8",
+  "current_problem": "x/3=7",
   "current_solution_steps": [
-    "296/x=8",
-    "296 = 8x",
-    "x = 296 \u00f7 8",
-    "x = 37"
+    "x/3=7",
+    "x = 7 \u00d7 3",
+    "x = 21"
   ],
-  "visible_chars": [
-    [
-      0,
-      1
-    ],
-    [
-      0,
-      2
-    ],
-    [
-      0,
-      4
-    ],
-    [
-      0,
-      0
-    ]
-  ],
-  "incorrect_clicks": 12,
+  "visible_chars": [],
+  "incorrect_clicks": 0,
   "saved_cracks": []
 }

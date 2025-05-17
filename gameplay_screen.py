@@ -1472,6 +1472,11 @@ class GameplayScreen(tk.Toplevel):
             # Add to visible chars
             self.visible_chars.add((line_idx, char_idx))
             
+            # Ensure SolutionSymbolDisplay is synced with the new visible_chars state
+            # This will redraw symbols, applying correct initial visibility and colors.
+            if self.solution_symbol_display:
+                self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars)
+
             # Reveal character in canvas using SolutionSymbolDisplay
             # char_tag = f"sol_{line_idx}_{char_idx}" # Old tag
             # target_color = "#336699"  # A blue color for revealed characters # Old color
