@@ -291,68 +291,143 @@ class LevelCompletePopup:
     
     def start_animations(self):
         """Start all animations"""
-        if self.animation_running:
-            return
-            
         self.animation_running = True
-        
-        # Initialize particles
-        self.particles = []
-        width = self.canvas.winfo_width()
-        height = self.canvas.winfo_height()
-        
-        for _ in range(30):
-            self.particles.append({
-                'x': random.randint(0, width),
-                'y': random.randint(0, height),
-                'vx': random.uniform(-1, 1),
-                'vy': random.uniform(-1, 1),
-                'radius': random.uniform(2, 5),
-                'color': random.choice(self.colors["particle_colors"]),
-                'alpha': random.uniform(0.3, 0.8)
-            })
-        
-        # Start animation loops
-        self.animate_particles()
+        # self.animate_particles()  # Commented out to remove particles
         self.animate_text()
+        self._animate_elements() # Start element animations
     
-    def animate_particles(self):
-        """Animate the floating particles"""
+    def _animate_elements(self):
+        """General animation loop for various small effects."""
         if not self.animation_running or not self.popup or not self.popup.winfo_exists():
             return
+
+        # Example: Pulsate border glow intensity
+        if hasattr(self, 'canvas'):
+            border_items = self.canvas.find_withtag("border")
+            glow_steps = 3 # Should match create_decorative_elements
+            base_alpha = 0.6
             
-        width = self.canvas.winfo_width()
-        height = self.canvas.winfo_height()
-        
-        # Clear previous particles
-        self.canvas.delete("particle")
-        
-        # Update and draw particles
-        for p in self.particles:
-            # Update position
-            p['x'] += p['vx']
-            p['y'] += p['vy']
-            
-            # Bounce off edges
-            if p['x'] < 0 or p['x'] > width:
-                p['vx'] *= -1
-            if p['y'] < 0 or p['y'] > height:
-                p['vy'] *= -1
+            for i, item_id in enumerate(border_items):
+                # Calculate dynamic alpha for pulsing effect
+                # Using a time-based sine wave for smooth pulsing
+                time_factor = time.time() * 2.0  # Speed of pulse
+                pulse = (math.sin(time_factor + i * 0.5) + 1) / 2 # Ranges 0 to 1
                 
-            # Draw particle
-            self.canvas.create_oval(
-                p['x'] - p['radius'], 
-                p['y'] - p['radius'],
-                p['x'] + p['radius'], 
-                p['y'] + p['radius'],
-                fill=p['color'],
-                outline="",
-                tags="particle"
-            )
+                # Modulate base alpha with pulse
+                dynamic_alpha = (base_alpha - (i * 0.2)) * (0.7 + 0.3 * pulse) # Ensure alpha stays reasonable
+                dynamic_alpha = max(0.1, min(1.0, dynamic_alpha)) # Clamp alpha
+
+                try:
+                    color = self.get_alpha_color(self.colors["title"], dynamic_alpha)
+                    self.canvas.itemconfig(item_id, outline=color)
+                except tk.TclError:
+                    pass # Item might be gone
+
+        self.popup.after(50, self._animate_elements)
+
+    def animate_particles(self):
+        """Animate particles with various effects (movement, fade, etc.)"""
+        # This method is now effectively disabled by not being called.
+        # If we wanted to be absolutely sure, we could clear self.particles here or in init.
+        # However, since create_particles is also not called from start_animations, 
+        # self.particles should remain empty.
+
+        # if not self.animation_running or not self.popup or not self.popup.winfo_exists():
+        #     return
+
+        # # Create new particles occasionally
+        # if random.random() < 0.1 and len(self.particles) < 50: # Max 50 particles
+        #     self.create_particle()
+            
+        # # Update existing particles
+        # for particle in list(self.particles): # Iterate on a copy for safe removal
+        #     try:
+        #         # Move particle
+        #         self.canvas.move(particle['id'], particle['vx'], particle['vy'])
+                
+        #         # Update particle lifetime and fade
+        #         particle['life'] -= 1
+        #         if particle['life'] <= 0:
+        #             self.canvas.delete(particle['id'])
+        #             self.particles.remove(particle)
+        #             continue
+                
+        #         # Fade effect (adjust alpha)
+        #         alpha = particle['life'] / particle['max_life']
+        #         # Ensure alpha is between 0 and 1
+        #         alpha = max(0, min(1, alpha))
+                
+        #         # Create color with new alpha (approximate for Tkinter)
+        #         # This is a simplified way, proper alpha blending is complex in Tkinter
+        #         base_color_hex = particle['color'].lstrip('#')
+        #         r, g, b = tuple(int(base_color_hex[i:i+2], 16) for i in (0, 2, 4))
+                
+        #         # Blend with background (assuming self.colors["background"])
+        #         bg_r, bg_g, bg_b = tuple(int(self.colors["background"].lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+                
+        #         final_r = int(r * alpha + bg_r * (1 - alpha))
+        #         final_g = int(g * alpha + bg_g * (1 - alpha))
+        #         final_b = int(b * alpha + bg_b * (1 - alpha))
+                
+        #         # Clamp values to 0-255
+        #         final_r = max(0, min(255, final_r))
+        #         final_g = max(0, min(255, final_g))
+        #         final_b = max(0, min(255, final_b))
+                
+        #         new_color = f"#{final_r:02x}{final_g:02x}{final_b:02x}"
+        #         self.canvas.itemconfig(particle['id'], fill=new_color)
+                
+        #     except tk.TclError:
+        #         # Particle might have been deleted
+        #         if particle in self.particles:
+        #             self.particles.remove(particle)
         
-        # Continue animation
-        self.popup.after(30, self.animate_particles)
-    
+        # # Repeat animation
+        # self.popup.after(30, self.animate_particles) # Approx 30 FPS
+        pass # Method body effectively removed
+
+    def create_particle(self):
+        """Create a single particle with random properties"""
+        # This method is now effectively disabled.
+        # width = self.canvas.winfo_width()
+        # height = self.canvas.winfo_height()
+        
+        # # Ensure canvas has valid dimensions before creating particles
+        # if width <= 0 or height <= 0:
+        #     return # Don't create particles if canvas not ready
+
+        # x = random.randint(0, width)
+        # y = random.randint(0, height)
+        # size = random.randint(2, 5)
+        # color = random.choice(self.colors["particle_colors"])
+        
+        # # Particle movement vector (random direction)
+        # angle = random.uniform(0, 2 * math.pi)
+        # speed = random.uniform(0.5, 1.5)
+        # vx = math.cos(angle) * speed
+        # vy = math.sin(angle) * speed
+        
+        # # Particle lifetime
+        # max_life = random.randint(50, 150) # Number of frames
+        
+        # # Create particle on canvas
+        # particle_id = self.canvas.create_oval(
+        #     x - size, y - size, 
+        #     x + size, y + size,
+        #     fill=color, outline="", tags="particle"
+        # )
+        
+        # self.particles.append({
+        #     'id': particle_id,
+        #     'x': x, 'y': y,
+        #     'vx': vx, 'vy': vy,
+        #     'size': size,
+        #     'color': color,
+        #     'life': max_life,
+        #     'max_life': max_life
+        # })
+        pass # Method body effectively removed
+
     def animate_text(self):
         """Animate the title text pulsing effect"""
         if not self.animation_running or not self.popup or not self.popup.winfo_exists():

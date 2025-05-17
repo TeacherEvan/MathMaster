@@ -142,13 +142,45 @@ class LockAnimation:
         for i in range(self.total_parts):
             y_top = self.y - self.size // 2 + i * segment_height + 5
             y_bottom = self.y - self.size // 2 + (i + 1) * segment_height - 5
+            x_left = self.x - self.size // 3
+            x_right = self.x + self.size // 3
             
+            base_color_hex = segment_colors[i]
+            outline_color_hex = segment_outline_colors[i]
+
+            # Main segment body
             segment = self.canvas.create_rectangle(
-                self.x - self.size // 3, y_top,
-                self.x + self.size // 3, y_bottom,
-                fill=segment_colors[i], outline=segment_outline_colors[i], width=2, tags="lock_visual"
+                x_left, y_top,
+                x_right, y_bottom,
+                fill=base_color_hex, outline=outline_color_hex, width=2, tags="lock_visual"
             )
             self.lock_parts_items.append(segment)
+
+            # Add subtle 3D effect/shading to segments
+            # Top highlight
+            self.canvas.create_line(
+                x_left + 2, y_top + 2,
+                x_right - 2, y_top + 2,
+                fill=self._brighten_color(base_color_hex, 1.2), width=2, tags="lock_visual"
+            )
+            # Left highlight
+            self.canvas.create_line(
+                x_left + 2, y_top + 2,
+                x_left + 2, y_bottom -2,
+                fill=self._brighten_color(base_color_hex, 1.1), width=2, tags="lock_visual"
+            )
+            # Bottom shadow
+            self.canvas.create_line(
+                x_left + 2, y_bottom -2,
+                x_right -2, y_bottom -2,
+                fill=self._darken_color(base_color_hex, 0.7), width=2, tags="lock_visual"
+            )
+            # Right shadow
+            self.canvas.create_line(
+                x_right -2, y_top + 2,
+                x_right -2, y_bottom -2,
+                fill=self._darken_color(base_color_hex, 0.8), width=2, tags="lock_visual"
+            )
             
             # Store original positions for separation animation
             self.original_segment_positions.append((y_top, y_bottom))
@@ -205,9 +237,8 @@ class LockAnimation:
         all_colors = locked_colors + unlocked_colors + ['#ECF0F1', '#BDC3C7', '#95A5A6']
         
         # Create particles in different orbital rings
-        num_rings = 1 # Drastically reduced from 2
-        # Drastically reduced particle counts
-        particles_per_ring = [5]  # Reduced from [4, 6]
+        num_rings = 1 
+        particles_per_ring = [16]  # Doubled from 8 (originally 5 -> 8 -> 16)
         
         for ring_idx in range(num_rings):
             # Calculate radius for this ring
@@ -232,6 +263,9 @@ class LockAnimation:
                 # Random color from theme
                 color = random.choice(all_colors)
                 
+                # Determine if this particle should have a glowing pulsating effect (1 in 5)
+                is_glowing_pulsating = (i % 5 == 0)
+
                 # Create particle
                 particle_id = self.canvas.create_oval(
                     x - size, y - size,
@@ -247,10 +281,12 @@ class LockAnimation:
                     'size': size,
                     'original_size': size,
                     'color': color,
-                    'speed': 0.005 * (1 - 0.2 * ring_idx),  # Outer rings move slower
-                    'direction': 1 if random.random() > 0.3 else -1,  # Most go clockwise
-                    'phase': random.random() * 2 * math.pi,  # For pulsating effect
-                    'pulse_speed': random.uniform(0.02, 0.05)
+                    'original_color': color, # Store original color for glowing effect
+                    'speed': 0.005 * (1 - 0.2 * ring_idx),
+                    'direction': 1 if random.random() > 0.3 else -1,
+                    'phase': random.random() * 2 * math.pi,
+                    'pulse_speed': random.uniform(0.02, 0.05),
+                    'is_glowing_pulsating': is_glowing_pulsating # New attribute
                 })
     
     def _animate_particles(self):
@@ -277,8 +313,17 @@ class LockAnimation:
                         # Update phase for pulsating effect
                         particle['phase'] += particle['pulse_speed']
                         
-                        # Calculate pulse factor (1.0 +/- 0.2)
-                        pulse = 1.0 + 0.2 * math.sin(particle['phase'])
+                        # Calculate pulse factor (1.0 +/- 0.2 for normal, more for glowing)
+                        pulse_amplitude = 0.2
+                        current_color = particle['original_color']
+
+                        if particle.get('is_glowing_pulsating'):
+                            pulse_amplitude = 0.4 # More pronounced pulse for glowing particles
+                            # Glowing effect: oscillate brightness
+                            brightness_factor = 0.7 + 0.3 * math.sin(particle['phase'] * 2) # Multiplies phase for faster glow
+                            current_color = self._brighten_color(particle['original_color'], brightness_factor, ensure_visible=True)
+
+                        pulse = 1.0 + pulse_amplitude * math.sin(particle['phase'])
                         
                         # Calculate new position
                         x = self.x + particle['ring_radius'] * math.cos(particle['angle'])
@@ -287,13 +332,18 @@ class LockAnimation:
                         # Apply size based on pulse
                         size = particle['original_size'] * pulse
                         
-                        # Update position and size
+                        # Update position, size, and color
                         self.canvas.coords(
                             particle['id'],
                             x - size, y - size,
                             x + size, y + size
                         )
-                        
+                        if particle.get('is_glowing_pulsating'):
+                            self.canvas.itemconfig(particle['id'], fill=current_color)
+                        else: # Ensure non-glowing particles retain their original color if not already set
+                            if self.canvas.itemcget(particle['id'], 'fill') != particle['original_color']:
+                                 self.canvas.itemconfig(particle['id'], fill=particle['original_color'])
+                                
                     except tk.TclError:
                         # Skip if particle was deleted
                         continue
@@ -320,8 +370,17 @@ class LockAnimation:
                 # Update phase for pulsating effect
                 particle['phase'] += particle['pulse_speed']
                 
-                # Calculate pulse factor (1.0 +/- 0.2)
-                pulse = 1.0 + 0.2 * math.sin(particle['phase'])
+                # Calculate pulse factor (1.0 +/- 0.2 for normal, more for glowing)
+                pulse_amplitude = 0.2
+                current_color = particle['original_color']
+
+                if particle.get('is_glowing_pulsating'):
+                    pulse_amplitude = 0.4 # More pronounced pulse for glowing particles
+                    # Glowing effect: oscillate brightness
+                    brightness_factor = 0.7 + 0.3 * math.sin(particle['phase'] * 2) # Multiplies phase for faster glow
+                    current_color = self._brighten_color(particle['original_color'], brightness_factor, ensure_visible=True)
+
+                pulse = 1.0 + pulse_amplitude * math.sin(particle['phase'])
                 
                 # Calculate new position
                 x = self.x + particle['ring_radius'] * math.cos(particle['angle'])
@@ -330,13 +389,18 @@ class LockAnimation:
                 # Apply size based on pulse
                 size = particle['original_size'] * pulse
                 
-                # Update position and size
+                # Update position, size, and color
                 self.canvas.coords(
                     particle['id'],
                     x - size, y - size,
                     x + size, y + size
                 )
-                
+                if particle.get('is_glowing_pulsating'):
+                    self.canvas.itemconfig(particle['id'], fill=current_color)
+                else: # Ensure non-glowing particles retain their original color if not already set
+                    if self.canvas.itemcget(particle['id'], 'fill') != particle['original_color']:
+                         self.canvas.itemconfig(particle['id'], fill=particle['original_color'])
+                        
             except tk.TclError:
                 # Skip if particle was deleted
                 continue
@@ -801,7 +865,7 @@ class LockAnimation:
             wave_colors = [color, complementary_color, '#FFFFFF']
             
             # Create multiple waves with different timing
-            num_waves = num_waves_override if num_waves_override is not None else 1 # Reduced from 3, allow override
+            num_waves = num_waves_override if num_waves_override is not None else 2 # Doubled from 1 (originally 3 -> 1 -> 2)
             for wave_idx in range(num_waves):
                 # Schedule each wave to start with a delay
                 delay = wave_idx * 150  # Reduced delay from 200ms
@@ -818,13 +882,13 @@ class LockAnimation:
                 return
                 
             # Parameters for this wave
-            # Reduced particle count by ~70%
-            num_particles = particles_per_wave_override if particles_per_wave_override is not None else (5 + wave_idx * 2)  # Reduced from 16 + wave_idx * 4
+            # Doubled particle count
+            num_particles = particles_per_wave_override if particles_per_wave_override is not None else (10 + wave_idx * 4)  # Doubled (from 5 + idx*2), (orig 16 + idx*4 -> 5+idx*2 -> 10+idx*4)
             radius = self.size * 0.15 * (wave_idx + 1)  # Adjusted starting radius from 0.2
             max_radius = self.size * (0.7 + 0.2 * wave_idx)  # Adjusted max radius from 1.0 + 0.3
             
             # Create particles distributed evenly around the circle
-            wave_particles = []
+            wave_particles_data = []
             
             # Add main particles
             for i in range(num_particles):
@@ -835,6 +899,7 @@ class LockAnimation:
                 
                 # Particle size varies to create texture
                 size = random.uniform(2.5, 4.5)
+                is_pulsating = (i % 10 == 0) # 1 in 10 pulsate
                 
                 # Create particle
                 particle_id = self.canvas.create_oval(
@@ -844,33 +909,36 @@ class LockAnimation:
                 )
                 
                 # Store particle information
-                wave_particles.append({
+                wave_particles_data.append({
                     'id': particle_id,
                     'angle': angle,
-                    'size': size,
+                    'original_size': size,
+                    'current_size': size,
                     'radius': radius,
                     'max_radius': max_radius,
-                    'color': particle_color,
+                    'original_color': particle_color,
                     'phase': random.random() * 2 * math.pi,  # Random phase for oscillation
                     'type': 'main',  # Main particle
-                    'trail_ids': []  # Will store IDs of trail particles
+                    'trail_ids': [],  # Will store IDs of trail particles
+                    'is_pulsating': is_pulsating,
+                    'pulse_phase': random.uniform(0, 2 * math.pi) # For pulsation
                 })
             
             # Start animating the wave
-            self._animate_wave(center_x, center_y, wave_particles, 0, 60)  # 60 frames total
+            self._animate_wave(center_x, center_y, wave_particles_data, 0, 60)  # 60 frames total
             
         except tk.TclError:
             pass
     
-    def _animate_wave(self, center_x, center_y, particles, frame, max_frames):
+    def _animate_wave(self, center_x, center_y, particles_data, frame, max_frames):
         """Animate a circular wave of particles expanding outward"""
         if frame >= max_frames or not self.canvas.winfo_exists():
             # Clean up particles when animation completes
-            for particle in particles:
+            for particle_info in particles_data:
                 try:
-                    self.canvas.delete(particle['id'])
+                    self.canvas.delete(particle_info['id'])
                     # Also delete any trail particles
-                    for trail_id in particle.get('trail_ids', []):
+                    for trail_id in particle_info.get('trail_ids', []):
                         self.canvas.delete(trail_id)
                 except tk.TclError:
                     pass
@@ -883,19 +951,19 @@ class LockAnimation:
             # Use easing function for smooth acceleration and deceleration
             ease_progress = self._ease_in_out(progress)
             
-            for particle in particles:
-                if 'id' not in particle:
+            for particle_info in particles_data:
+                if 'id' not in particle_info:
                     continue
                     
                 # Calculate current radius based on progress
-                current_radius = particle['radius'] + (particle['max_radius'] - particle['radius']) * ease_progress
+                current_radius = particle_info['radius'] + (particle_info['max_radius'] - particle_info['radius']) * ease_progress
                 
                 # Add oscillation to radius for wave-like effect
-                oscillation = math.sin(particle['phase'] + progress * 8 * math.pi) * (self.size * 0.05)
+                oscillation = math.sin(particle_info['phase'] + progress * 8 * math.pi) * (self.size * 0.05)
                 current_radius += oscillation
                 
                 # Calculate position
-                angle = particle['angle']
+                angle = particle_info['angle']
                 
                 # Add a slight rotation to the angle for swirling effect
                 angle += progress * 0.5 * math.pi * (1 if frame % 2 == 0 else -1)  # Alternating direction
@@ -912,21 +980,36 @@ class LockAnimation:
                     # Shrink during last 30%
                     size_factor = 1.0 + 0.6 - (progress - 0.7) * 2
                 
-                size = particle['size'] * size_factor
+                particle_info['current_size'] = particle_info['original_size'] * size_factor
+                current_color_to_set = particle_info['original_color']
+                size_to_draw = particle_info['current_size']
+
+                if particle_info['is_pulsating']:
+                    particle_info['pulse_phase'] += 0.2 # Speed of wave pulse
+                    size_pulse_amplitude = 0.25
+                    brightness_pulse_amplitude = 0.4
+
+                    pulsed_size_modifier = (1.0 + size_pulse_amplitude * math.sin(particle_info['pulse_phase']))
+                    size_to_draw = particle_info['current_size'] * pulsed_size_modifier
+                    
+                    brightness_factor = 1.0 + brightness_pulse_amplitude * math.sin(particle_info['pulse_phase'] + math.pi/1.5)
+                    current_color_to_set = self._brighten_color(particle_info['original_color'], brightness_factor, ensure_visible=True)
+
+                size_to_draw = max(0, size_to_draw)
                 
                 # Create trail effect by adding smaller particles behind main particle
                 if frame % 3 == 0 and frame > 5 and frame < max_frames - 10:  # Only add trails every 3 frames and during middle of animation
                     # Clean up old trails if too many
-                    if len(particle.get('trail_ids', [])) > 5:
+                    if len(particle_info.get('trail_ids', [])) > 5:
                         try:
-                            old_trail = particle['trail_ids'].pop(0)
+                            old_trail = particle_info['trail_ids'].pop(0)
                             self.canvas.delete(old_trail)
                         except (tk.TclError, IndexError):
                             pass
                     
                     # Create new trail particle
-                    trail_size = size * 0.6  # Smaller than main particle
-                    trail_color = self._apply_opacity(particle['color'], 0.5)  # Semi-transparent
+                    trail_size = size_to_draw * 0.6  # Smaller than main particle
+                    trail_color = self._apply_opacity(current_color_to_set, 0.5)  # Semi-transparent
                     
                     trail_id = self.canvas.create_oval(
                         x - trail_size, y - trail_size,
@@ -935,51 +1018,58 @@ class LockAnimation:
                     )
                     
                     # Add to trail IDs
-                    if 'trail_ids' not in particle:
-                        particle['trail_ids'] = []
-                    particle['trail_ids'].append(trail_id)
+                    if 'trail_ids' not in particle_info:
+                        particle_info['trail_ids'] = []
+                    particle_info['trail_ids'].append(trail_id)
                 
                 # Update position and size of main particle
                 self.canvas.coords(
-                    particle['id'],
-                    x - size, y - size,
-                    x + size, y + size
+                    particle_info['id'],
+                    x - size_to_draw, y - size_to_draw,
+                    x + size_to_draw, y + size_to_draw
                 )
+                self.canvas.itemconfig(particle_info['id'], fill=current_color_to_set)
                 
-                # Add glow effect at certain animation stages
-                if 0.3 < progress < 0.7:
-                    # Change the particle color for a glowing effect
-                    if frame % 4 == 0:  # Only update every few frames for performance
-                        # Alternate between original color and brighter version
-                        glow_factor = 0.5 + 0.5 * math.sin(progress * 10 * math.pi)
-                        if glow_factor > 0.7:
-                            bright_color = self._brighten_color(particle['color'], 1.3)
-                            self.canvas.itemconfig(particle['id'], fill=bright_color)
-                        else:
-                            self.canvas.itemconfig(particle['id'], fill=particle['color'])
-                
-                # Add trailing effect by changing opacity toward the end
-                if progress > 0.6:
+                # Add glow effect at certain animation stages (removed, handled by pulsation)
+                # Add trailing effect by changing opacity toward the end (if not pulsating)
+                if not particle_info['is_pulsating'] and progress > 0.6:
                     opacity = 1.0 - (progress - 0.6) / 0.4  # Fade out in last 40%
-                    self.canvas.itemconfig(particle['id'], fill=self._apply_opacity(particle['color'], opacity))
-                
+                    self.canvas.itemconfig(particle_info['id'], fill=self._apply_opacity(particle_info['original_color'], opacity))
+                elif particle_info['is_pulsating'] and progress > 0.85: # Pulsating ones fade faster at very end
+                     opacity = 1.0 - (progress - 0.85) / 0.15
+                     self.canvas.itemconfig(particle_info['id'], fill=self._apply_opacity(current_color_to_set, opacity))
+
             # Schedule next frame
             self.canvas.after(16, lambda: self._animate_wave(
-                center_x, center_y, particles, frame + 1, max_frames))
+                center_x, center_y, particles_data, frame + 1, max_frames))
                 
         except tk.TclError:
             # Canvas or item might be gone
             pass
             
-    def _brighten_color(self, hex_color, factor=1.3):
-        """Brighten a given hex color by a factor"""
+    def _brighten_color(self, hex_color, factor=1.3, ensure_visible=False):
+        """Brighten a given hex color by a factor.
+        If ensure_visible is True, it prevents the color from becoming too dark.
+        """
         # Remove # if present
         hex_color = hex_color.lstrip('#')
         
         # Convert to RGB
-        r = min(255, int(int(hex_color[0:2], 16) * factor))
-        g = min(255, int(int(hex_color[2:4], 16) * factor))
-        b = min(255, int(int(hex_color[4:6], 16) * factor))
+        r_orig = int(hex_color[0:2], 16)
+        g_orig = int(hex_color[2:4], 16)
+        b_orig = int(hex_color[4:6], 16)
+
+        r = min(255, int(r_orig * factor))
+        g = min(255, int(g_orig * factor))
+        b = min(255, int(b_orig * factor))
+
+        if ensure_visible:
+            # Ensure that the color doesn't become too dark, maintain some luminosity
+            min_luminosity_component = 30 # Minimum value for any RGB component for "glow"
+            if factor < 0.5: # If dimming significantly, ensure it's not black
+                r = max(r, min(r_orig, min_luminosity_component))
+                g = max(g, min(g_orig, min_luminosity_component))
+                b = max(b, min(b_orig, min_luminosity_component))
         
         # Convert back to hex
         return f'#{r:02x}{g:02x}{b:02x}'
@@ -1046,8 +1136,8 @@ class LockAnimation:
         """Create an explosion effect when a row is completed"""
         try:
             # Create flying particles, allow override for number of particles
-            num_to_create = num_particles_explosion if num_particles_explosion is not None else 3 # Default to 3, reduced from 6
-            for _ in range(num_to_create):
+            num_to_create = num_particles_explosion if num_particles_explosion is not None else 6 # Doubled from 3 (originally 6 -> 3 -> 6)
+            for i in range(num_to_create):
                 # Random angle and speed
                 angle = random.uniform(0, 2 * math.pi)
                 speed = random.uniform(2, 6)
@@ -1058,21 +1148,22 @@ class LockAnimation:
                 
                 # Random size
                 size = random.uniform(2, 5)
+                is_pulsating = (i % 10 == 0) # 1 in 10 pulsates
                 
                 # Create the particle
-                particle = self.canvas.create_oval(
+                particle_item_id = self.canvas.create_oval(
                     px - size, py - size,
                     px + size, py + size,
                     fill=color, outline='', tags="explosion_particle"
                 )
                 
                 # Animate the particle
-                self._animate_explosion_particle(particle, px, py, angle, speed, size, 0, 25)
+                self._animate_explosion_particle(particle_item_id, px, py, angle, speed, size, 0, 25, color, is_pulsating)
                 
         except Exception as e:
             print(f"Error creating explosion: {e}")
     
-    def _animate_explosion_particle(self, particle_id, x, y, angle, speed, size, frame, max_frames):
+    def _animate_explosion_particle(self, particle_id, x, y, angle, speed, original_size, frame, max_frames, original_color, is_pulsating):
         """Animate a single explosion particle"""
         if frame >= max_frames or not self.canvas.winfo_exists():
             try:
@@ -1090,27 +1181,45 @@ class LockAnimation:
             new_y += 0.1 * frame * frame
             
             # Update size (shrink as it moves)
-            new_size = size * (1 - frame / max_frames)
+            current_size = original_size * (1 - frame / max_frames)
+            current_color_to_set = original_color
+
+            if is_pulsating:
+                # Pulsating effect for size and brightness
+                pulse_phase = frame * 0.5 # Adjust speed of pulse
+                size_pulse_amplitude = 0.3
+                brightness_pulse_amplitude = 0.5
+                
+                current_size *= (1.0 + size_pulse_amplitude * math.sin(pulse_phase))
+                
+                brightness_factor = 1.0 + brightness_pulse_amplitude * math.sin(pulse_phase + math.pi/2) # phase shift for brightness
+                current_color_to_set = self._brighten_color(original_color, brightness_factor, ensure_visible=True)
+
+            # Ensure size is not negative
+            current_size = max(0, current_size)
             
             # Update particle
             self.canvas.coords(
                 particle_id,
-                new_x - new_size, new_y - new_size,
-                new_x + new_size, new_y + new_size
+                new_x - current_size, new_y - current_size,
+                new_x + current_size, new_y + current_size
             )
+            self.canvas.itemconfig(particle_id, fill=current_color_to_set)
             
-            # Add opacity effect toward the end
-            if frame > max_frames * 0.7:
+            # Add opacity effect toward the end (only if not already pulsating color)
+            if not is_pulsating and frame > max_frames * 0.7:
                 # Calculate opacity factor
                 opacity = 1.0 - (frame - max_frames * 0.7) / (max_frames * 0.3)
                 # Get original color
-                original_color = self.canvas.itemcget(particle_id, 'fill')
                 # Apply opacity
                 self.canvas.itemconfig(particle_id, fill=self._apply_opacity(original_color, opacity))
+            elif is_pulsating and frame >= max_frames -1: # Ensure pulsating ones also fade at very end
+                 self.canvas.itemconfig(particle_id, fill=self._apply_opacity(current_color_to_set, 0.1))
+
             
             # Schedule next frame
             self.canvas.after(20, lambda: self._animate_explosion_particle(
-                particle_id, x, y, angle, speed, size, frame + 1, max_frames))
+                particle_id, x, y, angle, speed, original_size, frame + 1, max_frames, original_color, is_pulsating))
                 
         except tk.TclError:
             pass
@@ -1593,7 +1702,7 @@ class LockAnimation:
     def _create_radiating_circles(self):
         """Create expanding circles animation from the center of the lock"""
         try:
-            for i in range(5):  # Create 5 circles with staggered starts
+            for i in range(2):  # Create 2 circles (halved from 5, rounded down from 2.5)
                 delay = i * 200  # 200ms between each circle
                 self.canvas.after(delay, lambda idx=i: self._start_radiating_circle(idx))
         except tk.TclError:
@@ -1664,7 +1773,7 @@ class LockAnimation:
     def _create_floating_stars(self):
         """Create floating star particles"""
         try:
-            for _ in range(10):
+            for _ in range(5): # Halved from 10
                 # Random parameters for each star
                 angle = random.uniform(0, 2 * math.pi)
                 distance = random.uniform(self.size/6, self.size/3)
@@ -1757,8 +1866,8 @@ class LockAnimation:
         """Create sparkles that rotate around the lock"""
         try:
             # Create orbit particles
-            for i in range(20):
-                angle = i * (2 * math.pi / 20)  # Evenly distribute around circle
+            for i in range(10): # Halved from 20
+                angle = i * (2 * math.pi / 10)  # Adjusted denominator to new count
                 radius = self.size * 0.8
                 x = self.x + radius * math.cos(angle)
                 y = self.y + radius * math.sin(angle)
@@ -1873,8 +1982,8 @@ class LockAnimation:
         
         sparkle_colors = ['#F1C40F', '#F39C12', '#FFEB3B', '#FFC107', '#FFFFFF']  # Yellow/gold colors + white
         
-        # Reduced number of sparkles by ~70%
-        for _ in range(2):  # Reduced from 4
+        # Doubled number of sparkles 
+        for i in range(4):  # Doubled from 2 (originally 4 -> 2 -> 4)
             angle = random.uniform(0, 2 * math.pi)
             # Sparkles should emanate from the segment's center
             distance = random.uniform(2, 10)  # Initial distance from center
@@ -1882,19 +1991,26 @@ class LockAnimation:
             
             x = center_x + math.cos(angle) * distance
             y = center_y + math.sin(angle) * distance
+            is_pulsating = (i % 10 == 0) # 1 in 10 pulsates (though with only 4 particles, only the first would)
+                                         # For more visual variety with small numbers, consider i % 2 or similar if desired
             
+            original_color_for_sparkle = random.choice(sparkle_colors)
             sparkle = self.canvas.create_oval(
                 x - particle_size, y - particle_size, 
                 x + particle_size, y + particle_size,
-                fill=random.choice(sparkle_colors), outline='', tags="lock_visual"
+                fill=original_color_for_sparkle, outline='', tags="lock_visual" # Changed tag to lock_visual from celebration_anim
             )
             sparkle_points.append({
                 'id': sparkle,
                 'dx': math.cos(angle) * random.uniform(1.5, 3),  # Faster movement
                 'dy': math.sin(angle) * random.uniform(1.5, 3),
                 'life': random.randint(20, 30),  # Longer lifespan
-                'size': particle_size,
-                'shrink_rate': particle_size / random.randint(20, 30)  # For smoother fade out
+                'original_size': particle_size,
+                'current_size': particle_size, # Added current_size for pulsation
+                'shrink_rate': particle_size / random.randint(20, 30),
+                'is_pulsating': is_pulsating,
+                'original_color': original_color_for_sparkle,
+                'pulse_phase': random.uniform(0, 2 * math.pi) # For pulsation offset
             })
             
         self._animate_sparkles(sparkle_points)
@@ -1902,36 +2018,58 @@ class LockAnimation:
     def _animate_sparkles(self, sparkles):
         """Animate the sparkle particles with size reduction for fade effect"""
         active_sparkles = False
-        for sparkle in sparkles[:]:  # Iterate over a copy for safe removal
-            if sparkle['life'] <= 0 or sparkle['size'] <= 0:
+        for sparkle_data in sparkles[:]:  # Iterate over a copy for safe removal
+            if sparkle_data['life'] <= 0 or sparkle_data['current_size'] <= 0:
                 try:
-                    self.canvas.delete(sparkle['id'])
+                    self.canvas.delete(sparkle_data['id'])
                 except tk.TclError:
                     pass  # Item might already be deleted if canvas is closing
-                sparkles.remove(sparkle)
+                sparkles.remove(sparkle_data)
                 continue
                 
             try:
                 # Move the sparkle
-                self.canvas.move(sparkle['id'], sparkle['dx'], sparkle['dy'])
+                self.canvas.move(sparkle_data['id'], sparkle_data['dx'], sparkle_data['dy'])
                 
-                # Shrink the sparkle for fade-out effect
-                sparkle['size'] -= sparkle['shrink_rate']
-                if sparkle['size'] > 0:
-                    item_id = sparkle['id']
+                # Shrink the sparkle for fade-out effect (base shrinkage)
+                sparkle_data['current_size'] -= sparkle_data['shrink_rate']
+                current_color_to_set = sparkle_data['original_color']
+                size_to_draw = sparkle_data['current_size']
+
+                if sparkle_data['is_pulsating'] and sparkle_data['current_size'] > 0:
+                    sparkle_data['pulse_phase'] += 0.3 # Speed of pulse
+                    size_pulse_amplitude = 0.5 
+                    brightness_pulse_amplitude = 0.6
+
+                    # Apply pulsation to size, ensuring it doesn't go below shrink rate
+                    pulsed_size_modifier = (1.0 + size_pulse_amplitude * math.sin(sparkle_data['pulse_phase']))
+                    size_to_draw = sparkle_data['current_size'] * pulsed_size_modifier
+                    size_to_draw = max(0, size_to_draw) # Ensure not negative
+
+                    brightness_factor = 1.0 + brightness_pulse_amplitude * math.sin(sparkle_data['pulse_phase'] + math.pi/2)
+                    current_color_to_set = self._brighten_color(sparkle_data['original_color'], brightness_factor, ensure_visible=True)
+                
+                if size_to_draw > 0:
+                    item_id = sparkle_data['id']
                     current_coords = self.canvas.coords(item_id)
                     if len(current_coords) == 4:  # Ensure we have valid coordinates
                         center_x = (current_coords[0] + current_coords[2]) / 2
                         center_y = (current_coords[1] + current_coords[3]) / 2
                         self.canvas.coords(
                             item_id,
-                            center_x - sparkle['size'], center_y - sparkle['size'],
-                            center_x + sparkle['size'], center_y + sparkle['size']
+                            center_x - size_to_draw, center_y - size_to_draw,
+                            center_x + size_to_draw, center_y + size_to_draw
                         )
+                        self.canvas.itemconfig(item_id, fill=current_color_to_set)
+                    else: # Degenerate sparkle, remove
+                        sparkle_data['life'] = 0 
+                else: # Size is zero or less, mark for removal
+                    sparkle_data['life'] = 0
+
             except tk.TclError:
                 pass  # Item might already be deleted
                 
-            sparkle['life'] -= 1
+            sparkle_data['life'] -= 1
             active_sparkles = True
             
         if active_sparkles and self.canvas.winfo_exists():

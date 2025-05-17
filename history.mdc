@@ -429,3 +429,12 @@ The development of the animated worm feature for Window B in MathMaster has prog
 
 **Current Status & Potential Lingering Issue:**
 The primary concern noted was the "Could not find transported symbol" error. The latest fixes aimed to resolve this by ensuring correct timing for worm activation and symbol list updates. The direct manipulation of `falling_symbols_on_screen` was a key fix for recreating symbols in Window C. The effectiveness of these changes in resolving the symbol ID error needs to be verified.
+
+* Removed particles from success pop-up (`level_complete_popup.py`).
+* Increased orbiting particles in lock animation (`lock_animation.py`) by 60%.
+
+* Modified `lock_animation.py`:
+    * Orbiting particles: Doubled quantity, 1 in 5 get enhanced glow/pulse.
+    * Row Completion Particles (Explosion, Sparkle, Wave): Doubled quantities, 1 in 10 get pulse effect.
+    * Level Cleared Particles (Radiating Circles, Stars, Rotating Sparkles): Counts halved.
+    * Lock Segments: Added subtle 3D shading.
