@@ -377,6 +377,15 @@ class GameplayScreen(tk.Toplevel):
         self.geometry("1000x700") # Default size
         self.configure(bg="#1e1e1e")
         
+        # Auto-save directory - needs to be initialized before clear_saved_game can be called
+        self.save_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "saves")
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        # Ensure a fresh start by clearing any saved game for this level upon initialization
+        # This means launching a level from welcome_screen will always be a new problem.
+        self.clear_saved_game() 
+        logging.info(f"GameplayScreen for {self.current_level}: Cleared any existing save file to ensure fresh start from welcome screen.")
+        
         # Add tracking for last problem to avoid repetition
         self.last_problems = []
         self.max_history = 3  # Remember last 3 problems to avoid repetition
@@ -426,14 +435,12 @@ class GameplayScreen(tk.Toplevel):
         
         # Track solution symbol data for worms
         self.solution_symbols = []
+        self.transported_by_worm_symbols = [] # Added to track symbols taken by worms
+        self.currently_targeted_by_worm = None # Added for the rescue mechanic
         
         # Debug mode to print character details
         self.debug_mode = True
 
-        # Auto-save directory
-        self.save_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "saves")
-        os.makedirs(self.save_dir, exist_ok=True)
-        
         # --- Layout ---
         self.create_layout()
 
@@ -522,7 +529,8 @@ class GameplayScreen(tk.Toplevel):
         # Worm will be created and started later, after first row completion
         self.worm_animation = WormAnimation(
             self.solution_canvas,
-            symbol_transport_callback=self.handle_symbol_transport
+            symbol_transport_callback=self.handle_symbol_transport,
+            symbol_targeted_for_steal_callback=self.handle_symbol_targeted_for_steal # New callback passed
         )
         
         # Update solution symbols when they change - this can still run
@@ -569,23 +577,46 @@ class GameplayScreen(tk.Toplevel):
             
             # Manually create a new falling symbol
             x_pos = random.randint(50, self.symbol_canvas.winfo_width() - 50)
-            new_symbol = {
+            new_symbol_data_for_falling_list = {
                 'char': char,
                 'x': x_pos,
                 'y': 10,  # Near the top
-                'id': None,
-                'size': 44  # Match the size in FallingSymbols
+                'id': None, # This will be populated by FallingSymbols when it creates the canvas item
+                'size': 44,  # Match the size in FallingSymbols
+                'is_transported_worm_symbol': True,
+                'original_line_idx': line_idx,
+                'original_char_idx': char_idx,
+                'original_char_tag': char_tag
             }
             
             # Add to falling symbols list
-            self.falling_symbols.falling_symbols_on_screen.append(new_symbol)
+            self.falling_symbols.falling_symbols_on_screen.append(new_symbol_data_for_falling_list)
+
+            # Add to our persistent list of symbols transported by worms
+            self.transported_by_worm_symbols.append({
+                'char': char,
+                'original_line_idx': line_idx,
+                'original_char_idx': char_idx,
+                'original_char_tag': char_tag,
+                'transported_at': time.time() # Optional: for later debugging or limits
+            })
             
-            logging.info(f"Symbol '{char}' added to falling symbols in Window C at position ({x_pos}, 10)")
+            logging.info(f"Symbol '{char}' (tag: {char_tag}) added to falling symbols in Window C and tracked as worm-transported.")
             
         except Exception as e:
             logging.error(f"Error handling symbol transport: {e}")
             import traceback
             logging.error(traceback.format_exc())
+    
+    def handle_symbol_targeted_for_steal(self, worm_id, symbol_data):
+        """Callback from WormAnimation when a worm targets a symbol for stealing."""
+        self.currently_targeted_by_worm = {
+            'worm_id': worm_id,
+            'symbol_data': symbol_data # Contains id, char, line_idx, char_idx of symbol in Window B
+        }
+        logging.info(f"Worm ID {worm_id} is targeting symbol: '{symbol_data.get('char')}' (Canvas ID: {symbol_data.get('id')}) at L{symbol_data.get('line_idx')}C{symbol_data.get('char_idx')} for stealing.")
+        # No visual change to the symbol in Window B is made at this point.
+        # The player has a chance to "rescue" it by clicking the correct char from Window C.
     
     def _update_worm_solution_symbols(self):
         """Update the list of solution symbols for worm interaction"""
@@ -961,6 +992,9 @@ class GameplayScreen(tk.Toplevel):
         self.solution_canvas.delete("solution_text")
         self.solution_canvas.delete("feedback_flash")
 
+        # Ensure current_solution_steps is empty before generating new ones
+        self.current_solution_steps = [] 
+
         # Get and prepare solution steps
         self.current_solution_steps = generate_solution_steps(self.current_problem)
         
@@ -1195,6 +1229,76 @@ class GameplayScreen(tk.Toplevel):
         if self.debug_mode:
             logging.info(f"User clicked symbol: '{clicked_char}' at position {click_pos}")
             logging.info(f"Symbol has ID: {clicked_symbol_info.get('id')}")
+
+        # --- NEW: Check for Rescue Attempt First --- 
+        if self.currently_targeted_by_worm:
+            targeted_info = self.currently_targeted_by_worm
+            targeted_symbol_data = targeted_info['symbol_data']
+            
+            # Check if the clicked character in Window C matches the character the worm is targeting
+            if clicked_char == targeted_symbol_data.get('char'):
+                logging.info(f"Potential rescue: Clicked '{clicked_char}' matches worm-targeted char. Attempting to rescue symbol at L{targeted_symbol_data.get('line_idx')}C{targeted_symbol_data.get('char_idx')}.")
+
+                # Reveal the character in Window B (this also adds to visible_chars etc.)
+                # reveal_char handles the visual update and game logic for revealing a character.
+                self.reveal_char(targeted_symbol_data.get('line_idx'), targeted_symbol_data.get('char_idx'))
+
+                # Attempt the rescue with the worm animation
+                if hasattr(self, 'worm_animation') and self.worm_animation:
+                    rescue_successful = self.worm_animation.attempt_rescue(
+                        targeted_info['worm_id'], 
+                        targeted_symbol_data.get('id') # Pass canvas ID of the symbol in Window B
+                    )
+                    if rescue_successful:
+                        logging.info(f"Rescue successful! Worm {targeted_info['worm_id']} was stopped.")
+                    else:
+                        logging.info(f"Rescue attempt for worm {targeted_info['worm_id']} failed (likely too late or target mismatch).")
+                
+                # This targeting event has been processed (successfully or not)
+                self.currently_targeted_by_worm = None
+                
+                # Remove the clicked symbol from Window C
+                if symbol_index != -1: # Ensure symbol_index is valid
+                    self.falling_symbols.remove_symbol(symbol_index)
+                
+                return # Click action handled as a rescue attempt
+        # --- END NEW RESCUE LOGIC ---
+
+        # Check if this symbol was transported by a worm and can be returned
+        if clicked_symbol_info.get('is_transported_worm_symbol'):
+            original_line_idx = clicked_symbol_info['original_line_idx']
+            original_char_idx = clicked_symbol_info['original_char_idx']
+            original_char_tag = clicked_symbol_info['original_char_tag']
+            revealed_color = "#336699"  # Standard revealed color
+
+            logging.info(f"Clicked symbol '{clicked_char}' was transported by a worm. Returning to Window B at ({original_line_idx}, {original_char_idx}).")
+
+            # Make it visible again in Window B
+            try:
+                self.solution_canvas.itemconfig(original_char_tag, fill=revealed_color)
+                self.visible_chars.add((original_line_idx, original_char_idx)) # Add back to visible set
+                self.flash_char_green(original_char_tag, revealed_color) # Flash it
+
+                # Remove from falling symbols in Window C
+                self.falling_symbols.remove_symbol(symbol_index)
+
+                # Remove from our tracking list of transported_by_worm_symbols
+                # Find and remove the specific symbol from the tracking list
+                for i, entry in enumerate(self.transported_by_worm_symbols):
+                    if entry['original_char_tag'] == original_char_tag:
+                        self.transported_by_worm_symbols.pop(i)
+                        logging.info(f"Removed {original_char_tag} from transported_by_worm_symbols list.")
+                        break
+                
+                # Potentially trigger a check if the step/level is now complete, though re-adding a char might not complete a new step
+                self._check_if_step_complete(original_line_idx) 
+                self._check_for_lock_visual_update()
+
+            except tk.TclError as e:
+                logging.error(f"TclError returning worm-transported symbol {original_char_tag} to Window B: {e}")
+            except Exception as e:
+                logging.error(f"Error returning worm-transported symbol {original_char_tag} to Window B: {e}")
+            return # This click action is complete, do not proceed to normal symbol matching
 
         try:
             # Get all possible character positions that could be clicked

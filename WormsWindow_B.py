@@ -5,7 +5,7 @@ import time
 import logging
 
 class WormAnimation:
-    def __init__(self, canvas, canvas_width=None, canvas_height=None, symbol_transport_callback=None):
+    def __init__(self, canvas, canvas_width=None, canvas_height=None, symbol_transport_callback=None, symbol_targeted_for_steal_callback=None):
         """Initialize the worm animation on the specified canvas.
         
         Args:
@@ -14,6 +14,8 @@ class WormAnimation:
             canvas_height: Optional initial height of the canvas
             symbol_transport_callback: Callback function when a symbol is transported
                                       Should accept (symbol_id, char) parameters
+            symbol_targeted_for_steal_callback: Callback when a worm targets a symbol for stealing
+                                              Should accept (worm_id, symbol_data dict)
         """
         self.canvas = canvas
         self.width = canvas_width or canvas.winfo_width()
@@ -38,8 +40,9 @@ class WormAnimation:
         # Symbol transport functionality (Window B to C)
         self.symbol_transport_callback = symbol_transport_callback
         self.transport_timer = None
-        self.transport_interval = 10000  # 10 seconds
+        self.transport_interval = 15000  # 15 seconds (updated from 10000)
         self.transporting_symbols = {}  # Track symbols being transported
+        self.symbol_targeted_for_steal_callback = symbol_targeted_for_steal_callback # New callback
         
         # Bind to canvas resize events
         self.canvas.bind("<Configure>", self.on_canvas_resize)
@@ -682,6 +685,14 @@ class WormAnimation:
         symbol['transported'] = True
         self.transporting_symbols[symbol_id] = symbol
         
+        # --- NEW: Notify GameplayScreen that a symbol is being targeted for stealing --- 
+        if self.symbol_targeted_for_steal_callback:
+            # Pass worm ID and a copy of the symbol data dictionary
+            # The symbol data contains original canvas ID, char, line_idx, char_idx
+            self.symbol_targeted_for_steal_callback(worm['id'], dict(symbol)) 
+            logging.info(f"Worm {worm['id']} targeting symbol {symbol.get('char')} (ID: {symbol_id}) for potential steal. Callback invoked.")
+        # --------------------------------------------------------------------------
+        
         # Target the symbol with the worm
         self._target_symbol_for_transport(worm, symbol)
         
@@ -732,6 +743,16 @@ class WormAnimation:
     
     def _begin_transport_animation(self, worm, symbol):
         """Begin animating the symbol being transported to Window C"""
+        # --- NEW: Check if transport was aborted (e.g., by rescue) before starting --- 
+        if not worm.get('transport_target') or worm.get('transport_target').get('id') != symbol.get('id'):
+            logging.info(f"Transport animation for worm {worm['id']} and symbol {symbol.get('id')} aborted before start (target is None or changed). Symbol may have been rescued.")
+            # Ensure worm state is reset if it was about to transport this specific symbol
+            if worm.get('transport_target') is None: # Check if it was cleared by rescue
+                worm['mouth_state'] = 0
+                worm['speed_multiplier'] = worm.get('original_speed_before_push', 1.0)
+            return
+        # --- END NEW --- 
+
         # Get symbol info
         symbol_id = symbol.get('id')
         if not symbol_id:
@@ -848,6 +869,10 @@ class WormAnimation:
         """Set callback function for when a symbol is transported to Window C"""
         self.symbol_transport_callback = callback
         
+    def set_symbol_targeted_for_steal_callback(self, callback):
+        """Set callback for when a worm targets a symbol for stealing."""
+        self.symbol_targeted_for_steal_callback = callback
+        
     def clear_worms(self):
         """Clear all worms from the canvas"""
         if not self.canvas.winfo_exists():
@@ -954,48 +979,50 @@ class WormAnimation:
         if not self.canvas.winfo_exists() or not self.interaction_enabled:
             return
 
+        # --- MODIFICATION: Prevent drawing of blue square glows --- 
+        # Ensure any existing glows are cleared, log action, and skip creating new ones.
+        self._remove_borders_from_solution_symbols()
+        logging.info("Skipping creation of blue square glow borders as per user request.")
+        return 
+        # --- END MODIFICATION ---
+
+        # The code below this point will not be reached due to the return statement above.
         # First, remove any existing glows to prevent duplicates or orphaned glows
-        self._remove_borders_from_solution_symbols() 
+        # self._remove_borders_from_solution_symbols() # This line is effectively covered by the call above
 
-        for symbol_data in self.solution_symbols:
-            symbol_text_id = symbol_data.get('id') # This is the ID of the TEXT item
-            if not symbol_text_id:
-                continue
+        # for symbol_data in self.solution_symbols: # This loop will not be reached
+        #     symbol_text_id = symbol_data.get('id') # This is the ID of the TEXT item
+        #     if not symbol_text_id:
+        #         continue
             
-            try:
-                # Ensure the symbol_text_id is valid on the canvas before getting bbox
-                if not self.canvas.coords(symbol_text_id): # Check if item exists/has coords
-                    logging.debug(f"Symbol text ID {symbol_text_id} seems invalid or deleted, skipping glow.")
-                    continue
+        #     try:
+        #         if not self.canvas.coords(symbol_text_id):
+        #             logging.debug(f"Symbol text ID {symbol_text_id} seems invalid or deleted, skipping glow.")
+        #             continue
 
-                bbox = self.canvas.bbox(symbol_text_id)
-                if not bbox:
-                    logging.debug(f"Cannot get bbox for symbol_text_id {symbol_text_id}, skipping glow.")
-                    continue
+        #         bbox = self.canvas.bbox(symbol_text_id)
+        #         if not bbox:
+        #             logging.debug(f"Cannot get bbox for symbol_text_id {symbol_text_id}, skipping glow.")
+        #             continue
                     
-                padding = 3
-                # The tag "symbol_glow" is used for mass deletion.
-                # We can store the glow's own ID in symbol_data if needed for more granular control,
-                # but _remove_borders_from_solution_symbols already iterates symbol_data.
-                glow_rect_id = self.canvas.create_rectangle(
-                    bbox[0] - padding, bbox[1] - padding,
-                    bbox[2] + padding, bbox[3] + padding,
-                    outline="#88CCFF", # Light blue glow
-                    width=2,
-                    fill="", # Transparent fill
-                    tags=("symbol_glow", f"glow_for_text_item_{symbol_text_id}") # General and specific tag
-                )
-                # Ensure glow is drawn behind the text item it's for.
-                self.canvas.tag_lower(glow_rect_id, symbol_text_id)
-                symbol_data['glow_canvas_id'] = glow_rect_id # Store the glow's own canvas ID
+        #         padding = 3
+        #         glow_rect_id = self.canvas.create_rectangle(
+        #             bbox[0] - padding, bbox[1] - padding,
+        #             bbox[2] + padding, bbox[3] + padding,
+        #             outline="#88CCFF", 
+        #             width=2,
+        #             fill="", 
+        #             tags=("symbol_glow", f"glow_for_text_item_{symbol_text_id}")
+        #         )
+        #         self.canvas.tag_lower(glow_rect_id, symbol_text_id)
+        #         symbol_data['glow_canvas_id'] = glow_rect_id 
                 
-            except tk.TclError as e:
-                # This can happen if symbol_text_id is no longer valid (e.g., canvas cleared)
-                logging.warning(f"TclError adding glow for symbol ID {symbol_text_id}: {e}. Symbol might be gone.")
-                if 'glow_canvas_id' in symbol_data: # Clean up if it was partially set
-                    del symbol_data['glow_canvas_id']
-                continue
-        logging.debug(f"Finished adding/updating glow borders for {len(self.solution_symbols)} currently tracked symbols.")
+        #     except tk.TclError as e:
+        #         logging.warning(f"TclError adding glow for symbol ID {symbol_text_id}: {e}. Symbol might be gone.")
+        #         if 'glow_canvas_id' in symbol_data: 
+        #             del symbol_data['glow_canvas_id']
+        #         continue
+        # logging.debug(f"Finished adding/updating glow borders for {len(self.solution_symbols)} currently tracked symbols.")
                 
     def _remove_borders_from_solution_symbols(self):
         """Remove borders from all solution symbols"""
@@ -1011,6 +1038,66 @@ class WormAnimation:
                 del symbol_data['glow_canvas_id']
         logging.debug("Removed all symbol glow borders and cleared internal glow IDs.")
                 
+    def _remove_specific_worm(self, worm_to_remove):
+        """Removes a specific worm from the game and canvas."""
+        if not self.canvas.winfo_exists() or not worm_to_remove:
+            return
+        
+        logging.info(f"Removing worm ID: {worm_to_remove.get('id')}")
+
+        # Delete canvas items for the worm
+        for segment_id in worm_to_remove.get('segments', []):
+            self.canvas.delete(segment_id)
+        for eye_id in worm_to_remove.get('eyes', []):
+            self.canvas.delete(eye_id)
+        if worm_to_remove.get('mouth'):
+            self.canvas.delete(worm_to_remove.get('mouth'))
+        
+        # Remove from the list of active worms
+        if worm_to_remove in self.worms:
+            self.worms.remove(worm_to_remove)
+            logging.info(f"Worm ID: {worm_to_remove.get('id')} removed from active list.")
+        else:
+            logging.warning(f"Attempted to remove worm ID: {worm_to_remove.get('id')} but it was not in the active list.")
+
+    def attempt_rescue(self, worm_id, targeted_symbol_canvas_id):
+        """Called by GameplayScreen when player attempts to rescue a symbol.
+        If successful (worm was targeting this symbol and hasn't fully stolen it),
+        the worm is removed (dies).
+        """
+        worm_to_check = None
+        for w in self.worms:
+            if w.get('id') == worm_id:
+                worm_to_check = w
+                break
+        
+        if not worm_to_check:
+            logging.warning(f"Rescue attempt: Worm ID {worm_id} not found.")
+            return False
+
+        # Check if the worm is currently targeting the specified symbol for transport
+        # The critical part is that worm['transport_target'] is set by _target_symbol_for_transport
+        # and _begin_transport_animation is the point where the actual stealing animation starts.
+        # A rescue should ideally happen before _begin_transport_animation has taken full effect.
+        current_target = worm_to_check.get('transport_target')
+        if current_target and current_target.get('id') == targeted_symbol_canvas_id:
+            # Conditions met: Worm is actively targeting this symbol for transport.
+            # The player has revealed/clicked it in time.
+            logging.info(f"Successful rescue! Worm ID {worm_id} was targeting symbol canvas_id {targeted_symbol_canvas_id}. Worm dies.")
+            
+            # Clear its target to prevent further transport actions for this symbol.
+            worm_to_check['transport_target'] = None
+            worm_to_check['mouth_state'] = 0 # Reset mouth
+            # Restore speed if it was modified during targeting/approaching (though not usually changed until push)
+            worm_to_check['speed_multiplier'] = worm_to_check.get('original_speed_before_push', 1.0) 
+
+            self._remove_specific_worm(worm_to_check)
+            return True
+        else:
+            targeted_id_log = current_target.get('id') if current_target else "None"
+            logging.info(f"Rescue attempt for worm ID {worm_id} and symbol {targeted_symbol_canvas_id} failed. Worm's current target: {targeted_id_log}.")
+            return False
+
 # For testing the animation standalone
 if __name__ == "__main__":
     root = tk.Tk()
