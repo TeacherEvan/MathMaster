@@ -1,10 +1,10 @@
 {
   "level": "Medium",
-  "current_problem": "5x = 35",
+  "current_problem": "3x = 33",
   "current_solution_steps": [
-    "5x = 35",
-    "x = 35 \u00f7 5",
-    "x = 7"
+    "3x = 33",
+    "x = 33 \u00f7 3",
+    "x = 11"
   ],
   "visible_chars": [
     [
@@ -13,21 +13,13 @@
     ],
     [
       0,
-      4
+      2
     ],
     [
       0,
       0
-    ],
-    [
-      0,
-      3
-    ],
-    [
-      0,
-      2
     ]
   ],
-  "incorrect_clicks": 1,
+  "incorrect_clicks": 3,
   "saved_cracks": []
 }

@@ -12,6 +12,7 @@ from lock_animation import LockAnimation # Import the lock animation class
 from error_animation import ErrorAnimation # Import the new error animation class
 from falling_symbols import FallingSymbols # Import the falling symbols manager
 from WormsWindow_B import WormAnimation # Import the worm animation class
+from window_b_solution_symbols import SolutionSymbolDisplay # Added import
 
 # Import the problem sets from the module files
 try:
@@ -425,7 +426,7 @@ class GameplayScreen(tk.Toplevel):
         self.incorrect_clicks = 0
         self.max_incorrect_clicks = 20
         self.game_over = False
-        self.flash_ids = {} # To manage flashing effects
+        # self.flash_ids = {} # To manage flashing effects - Will be managed by SolutionSymbolDisplay
         self.animation_after_id = None # For managing animation loop
         self.auto_save_after_id = None # For managing auto-save loop
         self.completed_line_indices_for_problem = set() # For lock animation logic
@@ -433,9 +434,10 @@ class GameplayScreen(tk.Toplevel):
         self.error_animation = None # Placeholder for ErrorAnimation instance
         self.falling_symbols = None # Placeholder for FallingSymbols instance
         self.worm_animation = None # Placeholder for WormAnimation instance
+        self.solution_symbol_display = None # Placeholder for SolutionSymbolDisplay instance
         
         # Track solution symbol data for worms
-        self.solution_symbols = []
+        self.solution_symbols_data_for_worms = [] # Renamed for clarity
         self.transported_by_worm_symbols = [] # Added to track symbols taken by worms
         self.currently_targeted_by_worm = None # Added for the rescue mechanic
         
@@ -443,7 +445,14 @@ class GameplayScreen(tk.Toplevel):
         self.debug_mode = True
 
         # --- Layout ---
-        self.create_layout()
+        self.create_layout() # This creates self.solution_canvas
+
+        # Initialize SolutionSymbolDisplay after solution_canvas is created
+        if hasattr(self, 'solution_canvas') and self.solution_canvas:
+            self.solution_symbol_display = SolutionSymbolDisplay(self.solution_canvas, self)
+        else:
+            logging.error("CRITICAL: GameplayScreen - self.solution_canvas not created before SolutionSymbolDisplay initialization.")
+            # Handle error appropriately, maybe raise exception or default
 
         # Initialize problem variables to empty state (can be useful, though problem load follows)
         self.current_problem = ""
@@ -479,7 +488,7 @@ class GameplayScreen(tk.Toplevel):
         # --- Bindings ---
         self.bind("<Escape>", self.exit_game)
         self.bind("<Configure>", self.on_resize) # Handle resize
-        self.bind("<Map>", lambda event: self.refresh_cracks())
+        # self.bind("<Map>", lambda event: self.refresh_cracks()) # refresh_cracks is more for game_over
         
         # Set up auto-save timer
         self.auto_save_interval = 10000  # 10 seconds
@@ -516,7 +525,7 @@ class GameplayScreen(tk.Toplevel):
         self.error_animation = ErrorAnimation(self.symbol_canvas)
 
         # Add a flash_ids dictionary to track animation timers for character flashing
-        self.flash_ids = {}
+        # self.flash_ids = {} # No longer needed here, SolutionSymbolDisplay handles its own
 
         # Initialize worm animation after other components are ready
         self.after(500, self._init_worm_animation)
@@ -541,136 +550,176 @@ class GameplayScreen(tk.Toplevel):
 
     def handle_symbol_transport(self, symbol_id, char):
         """Handle callback when a worm transports a symbol to Window C"""
-        logging.info(f"Symbol '{char}' (ID: {symbol_id}) transported to Window C")
+        logging.info(f"Symbol '{char}' (ID: {symbol_id}) transported by worm, will appear in Window C")
         
-        # Find which line and char index this symbol represents
-        transported_symbol = None
-        for symbol in self.solution_symbols:
-            if symbol.get('id') == symbol_id:
-                transported_symbol = symbol
+        # Find which line and char index this symbol represents from self.solution_symbols_data_for_worms
+        transported_symbol_info = None
+        original_line_idx, original_char_idx = -1, -1
+
+        # The symbol_id from WormAnimation is the canvas item ID.
+        # We need to find which (line_idx, char_idx) it corresponds to.
+        # self.solution_symbols_data_for_worms contains dicts like:
+        # {'id': canvas_item_id, 'char': char, 'line_idx': line_idx, 'char_idx': char_idx, ...}
+        
+        found_in_worm_data = False
+        for symbol_data in self.solution_symbols_data_for_worms:
+            if symbol_data.get('id') == symbol_id: # symbol_id is the canvas item id
+                transported_symbol_info = symbol_data
+                original_line_idx = symbol_data.get('line_idx')
+                original_char_idx = symbol_data.get('char_idx')
+                found_in_worm_data = True
                 break
                 
-        if not transported_symbol:
-            logging.warning(f"Could not find transported symbol with ID {symbol_id}")
+        if not found_in_worm_data or original_line_idx == -1 or original_char_idx == -1:
+            logging.warning(f"Could not reliably find original (line, char) for transported symbol canvas ID {symbol_id} with char '{char}'. Worm data might be stale or ID mismatch.")
+            # Attempt to find by char if it's unique and not yet transported - less reliable
+            # This part can be complex to recover from if IDs don't match.
+            # For now, we rely on the ID match.
             return
             
-        line_idx = transported_symbol.get('line_idx')
-        char_idx = transported_symbol.get('char_idx')
-        
-        if line_idx is None or char_idx is None:
-            logging.warning(f"Transported symbol missing line_idx or char_idx")
-            return
-            
-        # Mark the character as hidden in the solution canvas
-        char_tag = f"sol_{line_idx}_{char_idx}"
-        
-        try:
-            # Hide the character (make it white on white)
-            self.solution_canvas.itemconfig(char_tag, fill="#FFFFFF")
-            
-            # Mark it as needing to be reapplied
-            if (line_idx, char_idx) in self.visible_chars:
-                self.visible_chars.remove((line_idx, char_idx))
-                
-            # Create a copy of this character as a falling symbol in Window C
-            if not hasattr(self, 'falling_symbols') or not self.falling_symbols:
-                return
-            
-            # Manually create a new falling symbol
-            x_pos = random.randint(50, self.symbol_canvas.winfo_width() - 50)
-            new_symbol_data_for_falling_list = {
-                'char': char,
-                'x': x_pos,
-                'y': 10,  # Near the top
-                'id': None, # This will be populated by FallingSymbols when it creates the canvas item
-                'size': 44,  # Match the size in FallingSymbols
-                'is_transported_worm_symbol': True,
-                'original_line_idx': line_idx,
-                'original_char_idx': char_idx,
-                'original_char_tag': char_tag
-            }
-            
-            # Add to falling symbols list
-            self.falling_symbols.falling_symbols_on_screen.append(new_symbol_data_for_falling_list)
+        logging.info(f"Found original position for symbol ID {symbol_id}: Line {original_line_idx}, Char {original_char_idx}")
 
-            # Add to our persistent list of symbols transported by worms
-            self.transported_by_worm_symbols.append({
-                'char': char,
-                'original_line_idx': line_idx,
-                'original_char_idx': char_idx,
-                'original_char_tag': char_tag,
-                'transported_at': time.time() # Optional: for later debugging or limits
-            })
-            
-            logging.info(f"Symbol '{char}' (tag: {char_tag}) added to falling symbols in Window C and tracked as worm-transported.")
-            
-        except Exception as e:
-            logging.error(f"Error handling symbol transport: {e}")
-            import traceback
-            logging.error(traceback.format_exc())
-    
+        # Mark the character as 'hidden' or 'taken' in the solution display (Window B)
+        # The SolutionSymbolDisplay draws based on self.visible_chars.
+        # So, we remove it from visible_chars.
+        if (original_line_idx, original_char_idx) in self.visible_chars:
+            self.visible_chars.remove((original_line_idx, original_char_idx))
+            logging.info(f"Removed ({original_line_idx},{original_char_idx}) from self.visible_chars.")
+        
+        # Trigger a redraw of Window B to reflect the symbol is gone (or appears as non-visible)
+        if self.solution_symbol_display:
+            self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars)
+            logging.info(f"Symbol '{char}' (L{original_line_idx}C{original_char_idx}) visually removed/hidden in Window B via SolutionSymbolDisplay update.")
+
+            # Pulsate the spot where the symbol was taken, maybe with a different "empty" effect
+            # For now, no specific effect on Window B for "taken", the symbol just disappears.
+            # User request: "whenever a worm interacts with one It BRIGHTLY pulsates"
+            # This pulsation should happen when the worm *targets* or *takes* the symbol.
+            # Let's make it pulsate when taken for now with a specific color.
+            self.solution_symbol_display.start_pulsation(
+                original_line_idx, 
+                original_char_idx, 
+                pulse_color="#707070", # Darker pulse for "taken"
+                base_color="#FFFFFF", # Base should be the invisible color
+                duration=700, 
+                pulses=2
+            )
+
+
+        # Create a copy of this character as a falling symbol in Window C
+        if not hasattr(self, 'falling_symbols') or not self.falling_symbols:
+            return
+        
+        # Manually create a new falling symbol
+        x_pos = random.randint(50, self.symbol_canvas.winfo_width() - 50)
+        new_symbol_data_for_falling_list = {
+            'char': char,
+            'x': x_pos,
+            'y': 10,  # Near the top
+            'id': None, # This will be populated by FallingSymbols when it creates the canvas item
+            'size': 44,  # Match the size in FallingSymbols
+            'is_transported_worm_symbol': True,
+            'original_line_idx': original_line_idx,
+            'original_char_idx': original_char_idx,
+            'original_char_tag': f"sol_{original_line_idx}_{original_char_idx}"
+        }
+        
+        # Add to falling symbols list
+        self.falling_symbols.falling_symbols_on_screen.append(new_symbol_data_for_falling_list)
+
+        # Add to our persistent list of symbols transported by worms
+        self.transported_by_worm_symbols.append({
+            'char': char,
+            'original_line_idx': original_line_idx,
+            'original_char_idx': original_char_idx,
+            'original_char_tag': f"sol_{original_line_idx}_{original_char_idx}",
+            'transported_at': time.time() # Optional: for later debugging or limits
+        })
+        
+        logging.info(f"Symbol '{char}' (tag: {f"sol_{original_line_idx}_{original_char_idx}"}) added to falling symbols in Window C and tracked as worm-transported.")
+        
     def handle_symbol_targeted_for_steal(self, worm_id, symbol_data):
         """Callback from WormAnimation when a worm targets a symbol for stealing."""
         self.currently_targeted_by_worm = {
             'worm_id': worm_id,
             'symbol_data': symbol_data # Contains id, char, line_idx, char_idx of symbol in Window B
         }
-        logging.info(f"Worm ID {worm_id} is targeting symbol: '{symbol_data.get('char')}' (Canvas ID: {symbol_data.get('id')}) at L{symbol_data.get('line_idx')}C{symbol_data.get('char_idx')} for stealing.")
-        # No visual change to the symbol in Window B is made at this point.
-        # The player has a chance to "rescue" it by clicking the correct char from Window C.
+        line_idx = symbol_data.get('line_idx')
+        char_idx = symbol_data.get('char_idx')
+        char_val = symbol_data.get('char')
+
+        logging.info(f"Worm ID {worm_id} is targeting symbol: '{char_val}' (Canvas ID: {symbol_data.get('id')}) at L{line_idx}C{char_idx} for stealing.")
+        
+        # Make the targeted symbol pulsate
+        if self.solution_symbol_display and line_idx is not None and char_idx is not None:
+            # Determine base color (if visible, it's red, otherwise white)
+            base_c = self.solution_symbol_display.text_color if (line_idx, char_idx) in self.visible_chars else "#FFFFFF"
+            self.solution_symbol_display.start_pulsation(
+                line_idx, 
+                char_idx, 
+                pulse_color="#FFA500", # Bright orange/yellow for targeting
+                base_color=base_c,
+                duration=1500, # Longer pulsation while targeted
+                pulses=10 # Continuous pulsing
+            )
     
     def _update_worm_solution_symbols(self):
         """Update the list of solution symbols for worm interaction"""
-        if not hasattr(self, 'worm_animation') or not self.worm_animation:
+        if not hasattr(self, 'worm_animation') or not self.worm_animation or not self.solution_symbol_display:
+            self.after(1000, self._update_worm_solution_symbols) # Try again
             return
             
-        # Skip if no solution steps
-        if not self.current_solution_steps:
-            self.after(1000, self._update_worm_solution_symbols)  # Check again later
-            return
-            
-        # Reset solution symbols list
-        self.solution_symbols = []
+        # Ensure solution_symbol_display has the latest data drawn
+        # self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars) # This might be too frequent here
+
+        # Reset solution symbols list for worms
+        self.solution_symbols_data_for_worms = []
         
-        # Loop through visible characters
+        # Loop through all characters in current solution steps
         for line_idx, line in enumerate(self.current_solution_steps):
-            for char_idx, char in enumerate(line):
-                if (line_idx, char_idx) in self.visible_chars:
-                    # Character is visible, get its canvas ID and position
-                    char_tag = f"sol_{line_idx}_{char_idx}"
+            for char_idx, char_val in enumerate(line):
+                if not char_val.strip(): # Skip spaces for worm targeting
+                    continue
+
+                # Get its canvas ID and position from SolutionSymbolDisplay
+                # This requires SolutionSymbolDisplay to provide a way to get canvas item ID if worms need it directly.
+                # For now, worms get coordinates. If they need ID, SSD needs to expose it.
+                # Let's assume worms primarily need coordinates and the char itself.
+                
+                # We need the canvas item ID that WormsWindow_B uses.
+                # SolutionSymbolDisplay creates items like "ssd_0_0_text".
+                # This is a bit tricky because WormAnimation was using find_withtag with a simpler tag.
+                # For now, let's pass coordinates and the char. If worm animation *needs* the canvas ID,
+                # SolutionSymbolDisplay will need a method like `get_canvas_item_id(line, char_idx)`.
+                
+                # For the current WormAnimation, it seems to work with a list of dicts containing 'id', 'position', 'char', etc.
+                # The 'id' was the canvas item_id.
+                # The new SolutionSymbolDisplay creates two items per char (text & shadow).
+                # We should provide the ID of the main text item.
+                
+                char_tag_text = f"ssd_{line_idx}_{char_idx}_text"
+                items = self.solution_symbol_display.canvas.find_withtag(char_tag_text)
+                
+                if items:
+                    symbol_canvas_id = items[0]
+                    coords = self.solution_symbol_display.get_symbol_coordinates(line_idx, char_idx)
+
+                    is_visible_to_player = (line_idx, char_idx) in self.visible_chars
                     
-                    try:
-                        # Get item ID by tag
-                        items = self.solution_canvas.find_withtag(char_tag)
-                        if not items:
-                            continue
-                            
-                        symbol_id = items[0]
-                        
-                        # Get position of the character
-                        bbox = self.solution_canvas.bbox(symbol_id)
-                        if not bbox:
-                            continue
-                            
-                        # Calculate center position
-                        x = (bbox[0] + bbox[2]) / 2
-                        y = (bbox[1] + bbox[3]) / 2
-                        
-                        # Add to solution symbols list
-                        self.solution_symbols.append({
-                            'id': symbol_id,
-                            'position': (x, y),
-                            'char': char,
-                            'line_idx': line_idx,
-                            'char_idx': char_idx,
-                            'visible': True
-                        })
-                        
-                    except Exception as e:
-                        logging.error(f"Error getting symbol data: {e}")
-        
+                    self.solution_symbols_data_for_worms.append({
+                        'id': symbol_canvas_id, # This is the canvas item ID of the text
+                        'position': coords,
+                        'char': char_val,
+                        'line_idx': line_idx,
+                        'char_idx': char_idx,
+                        'visible_to_player': is_visible_to_player # New field: if player can see it
+                    })
+                else:
+                    if self.debug_mode:
+                        logging.warning(f"_update_worm_solution_symbols: Could not find canvas item for tag {char_tag_text}")
+
         # Update worm animation with current symbols
-        self.worm_animation.update_solution_symbols(self.solution_symbols)
+        self.worm_animation.update_solution_symbols(self.solution_symbols_data_for_worms)
         
         # Schedule next update
         self.after(2000, self._update_worm_solution_symbols)  # Update every 2 seconds
@@ -694,6 +743,15 @@ class GameplayScreen(tk.Toplevel):
         if is_complete and line_idx not in self.completed_line_indices_for_problem: # Process only if newly completed
             self.completed_line_indices_for_problem.add(line_idx)
             logging.info(f"Step {line_idx + 1} ('{current_line}') is now complete.")
+
+            # Stop any pulsation on symbols of this line if they were targeted
+            if self.solution_symbol_display:
+                for char_idx_loop in range(len(current_line)):
+                     # This assumes pulsation_after_ids uses a specific key format
+                    pulse_key = f"pulse_{line_idx}_{char_idx_loop}"
+                    if pulse_key in self.solution_symbol_display.pulsation_after_ids:
+                        self.solution_symbol_display.stop_specific_pulsation(pulse_key)
+
 
             if self.lock_animation:
                 # This will be handled by _check_for_lock_visual_update which is called from reveal_char
@@ -752,8 +810,10 @@ class GameplayScreen(tk.Toplevel):
 
     def redraw_game_elements(self):
         """Redraw elements that depend on window size"""
-        # Redraw solution lines as their position depends on canvas size
-        self.draw_solution_lines()
+        # Redraw solution lines using the new display class
+        if self.solution_symbol_display:
+            self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars)
+        
         # Redraw saved cracks using the error animation
         if self.error_animation:
             self.error_animation.redraw_saved_cracks()
@@ -929,6 +989,8 @@ class GameplayScreen(tk.Toplevel):
             logging.error(f"No problems found for level: {self.current_level}")
             self.current_problem = "" # Ensure problem state is cleared
             self.current_solution_steps = []
+            if self.solution_symbol_display: # Clear display if no problem
+                self.solution_symbol_display.update_data([], set())
             return
 
         self.clear_all_cracks()  # Clear any existing cracks
@@ -941,6 +1003,9 @@ class GameplayScreen(tk.Toplevel):
         if self.lock_animation:
             self.lock_animation.reset()
         
+        if self.solution_symbol_display: # Clear previous symbols from new display
+            self.solution_symbol_display.clear_all_visuals()
+
         available_problems = PROBLEMS[self.current_level]
         
         # Filter out recently used problems AND any empty/whitespace-only problem strings
@@ -1004,10 +1069,9 @@ class GameplayScreen(tk.Toplevel):
         self.visible_chars = set()
         self.incorrect_clicks = 0
         self.game_over = False
-        self.flash_ids = {}
-        # Clear previous solution lines from canvas
-        self.solution_canvas.delete("solution_text")
-        self.solution_canvas.delete("feedback_flash")
+        # Clear previous solution lines from canvas - now handled by solution_symbol_display.clear_all_visuals or update_data
+        # self.solution_canvas.delete("solution_text") # Old way
+        # self.solution_canvas.delete("feedback_flash") # Old way, feedback_flash not used by SSD
 
         # Ensure current_solution_steps is empty before generating new ones
         self.current_solution_steps = [] 
@@ -1026,101 +1090,33 @@ class GameplayScreen(tk.Toplevel):
                 logging.info("  No solution steps were generated.")
             logging.info("-----------------------------------------------------")
             
-        # Ensure redraw happens after canvas is sized
-        self.after(50, self.draw_solution_lines)
+        # Ensure redraw happens after canvas is sized and data is ready
+        if self.solution_symbol_display:
+            self.after(50, lambda: self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars))
         self.after(100, self.auto_reveal_spaces) # Auto-reveal initial spaces
 
     def draw_solution_lines(self):
-        """Draw the solution lines on the solution canvas as 8 horizontal lines for solution steps.
-        The lower 2/3 of the canvas is used, with a horizontal marker drawn for each line."""
+        """
+        This method now delegates drawing to the SolutionSymbolDisplay class.
+        It ensures data is passed correctly.
+        """
         try:
-            # Clear previous texts and markers
-            self.solution_canvas.delete("solution_text")
-            self.solution_canvas.delete("line_marker")
-
             # Notify worm animation about canvas redraw to clear its state related to old symbol IDs/glows
+            # This should happen BEFORE new symbols are drawn and new data is sent to worms.
             if hasattr(self, 'worm_animation') and self.worm_animation:
-                self.worm_animation.handle_solution_canvas_redraw()
+                self.worm_animation.handle_solution_canvas_redraw() # Worms clear their internal state
             
-            canvas_width = self.solution_canvas.winfo_width()
-            canvas_height = self.solution_canvas.winfo_height()
-            if canvas_width <= 1 or canvas_height <= 1:
-                self.after(50, self.draw_solution_lines)
-                return
-            
-            num_lines = 8
-            # Use bottom 2/3 of the canvas for solution lines
-            offset = canvas_height / 3
-            available_height = canvas_height * 2 / 3
-            line_height = available_height / (num_lines + 1)
-            char_width = 30  # Reduced character width for better fitting
-            font_size = 22 # Reduced font size
-            
-            # Draw all solution steps
-            if self.debug_mode:
-                logging.info(f"Drawing {len(self.current_solution_steps)} solution steps, {num_lines} lines available")
-            
-            for i in range(num_lines):
-                # Draw a horizontal line for each possible step
-                y_pos = offset + line_height * (i + 1)
-                
-                # Draw horizontal marker (underline)
-                self.solution_canvas.create_line(
-                    10, y_pos + 10, 
-                    canvas_width - 10, y_pos + 10, 
-                    fill="#666666",  # Gray for better visibility
-                    width=2,  # Thicker line
-                    dash=(4, 2),  # Dash pattern
-                    tags=("line_marker",)
-                )
-                
-                # Draw the solution text for this line if it exists
-                if i < len(self.current_solution_steps):
-                    line_text = self.current_solution_steps[i]
-                    if line_text:  # Skip empty lines
-                        total_text_width = len(line_text) * char_width
-                        x_start = (canvas_width - total_text_width) / 2
-                        
-                        # Determine if this is the active line (for debugging only)
-                        is_active_line = False
-                        if i > 0:
-                            prev_line_complete = all((i-1, j) in self.visible_chars for j in range(len(self.current_solution_steps[i-1])))
-                            this_line_incomplete = any((i, j) not in self.visible_chars for j in range(len(line_text)))
-                            if prev_line_complete and this_line_incomplete:
-                                is_active_line = True
-                        elif i == 0:
-                            this_line_incomplete = any((i, j) not in self.visible_chars for j in range(len(line_text)))
-                            if this_line_incomplete:
-                                is_active_line = True
-                        
-                        # Draw each character of the text
-                        for j, char in enumerate(line_text):
-                            is_visible = (i, j) in self.visible_chars
-                            
-                            # Set color: black for visible, white for invisible
-                            color = "#000000" if is_visible else "#FFFFFF"
-                            
-                            char_tag = f"sol_{i}_{j}"
-                            
-                            # Create the character text
-                            self.solution_canvas.create_text(
-                                x_start + j * char_width, y_pos,
-                                text=char,
-                                font=("Courier New", font_size, "bold"), # Use new font_size
-                                fill=color,
-                                anchor="w",
-                                tags=("solution_text", char_tag)
-                            )
-                            
-                            # Log active line info for debugging purposes only
-                            if self.debug_mode and is_active_line and not is_visible:
-                                logging.info(f"Character at position ({i}, {j}) is in the active line and not yet revealed")
+            # New: Call the new class to draw symbols
+            if self.solution_symbol_display:
+                # Make sure SolutionSymbolDisplay also knows about potential redraws for its own state (like pulsations)
+                self.solution_symbol_display.handle_canvas_redraw_for_worms() # SSD clears its pulsations
+                self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars)
             
             if self.debug_mode:
-                logging.info(f"Drew solution lines: {len(self.current_solution_steps)} steps")
+                logging.info(f"GameplayScreen: Delegated drawing of {len(self.current_solution_steps)} solution steps to SolutionSymbolDisplay.")
                 
         except Exception as e:
-            logging.error(f"Error drawing solution lines: {e}")
+            logging.error(f"Error in GameplayScreen.draw_solution_lines (delegating): {e}")
             import traceback
             logging.error(traceback.format_exc())
 
@@ -1256,6 +1252,10 @@ class GameplayScreen(tk.Toplevel):
             if clicked_char == targeted_symbol_data_B.get('char'):
                 logging.info(f"Potential intervention: Clicked '{clicked_char}' matches worm-targeted char. Attempting for symbol at L{targeted_symbol_data_B.get('line_idx')}C{targeted_symbol_data_B.get('char_idx')}.")
 
+                # Stop pulsation of the targeted symbol in Window B as an action is being taken
+                if self.solution_symbol_display:
+                    self.solution_symbol_display.stop_specific_pulsation(f"pulse_{targeted_symbol_data_B.get('line_idx')}_{targeted_symbol_data_B.get('char_idx')}")
+
                 intervention_successful = False # Default to false
                 if hasattr(self, 'worm_animation') and self.worm_animation:
                     intervention_successful = self.worm_animation.attempt_intervention_kill(
@@ -1289,7 +1289,9 @@ class GameplayScreen(tk.Toplevel):
 
                     # Mark character in Window B as visible and redraw to show it
                     self.visible_chars.add((line_idx_B, char_idx_B))
-                    self.draw_solution_lines() # This will redraw, creating the new char visual
+                    # self.draw_solution_lines() # This will redraw, creating the new char visual # Old call
+                    if self.solution_symbol_display:
+                        self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars)
                     logging.info(f"Marked L{line_idx_B}C{char_idx_B} as visible and redrew solution lines for Window B replacement.")
 
                 else: # Intervention failed
@@ -1316,12 +1318,21 @@ class GameplayScreen(tk.Toplevel):
                 self.visible_chars.add((original_line_idx, original_char_idx))
                 logging.info(f"[SYMBOL_RETURN_DEBUG] self.visible_chars AFTER add: {self.visible_chars}")
 
-                logging.info(f"[SYMBOL_RETURN_DEBUG] Calling self.draw_solution_lines() to redraw Window B.")
-                self.draw_solution_lines() # Redraw lines to ensure the character appears correctly
-                logging.info(f"[SYMBOL_RETURN_DEBUG] self.draw_solution_lines() finished. Attempting flash_char_green for tag {original_char_tag}.")
+                logging.info(f"[SYMBOL_RETURN_DEBUG] Calling solution_symbol_display.update_data to redraw Window B.")
+                if self.solution_symbol_display:
+                    self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars)
+                logging.info(f"[SYMBOL_RETURN_DEBUG] update_data finished. Attempting flash_char_green for L{original_line_idx}C{original_char_idx}.")
                 
-                self.flash_char_green(original_char_tag, revealed_color) # Flash it
-                logging.info(f"[SYMBOL_RETURN_DEBUG] flash_char_green for tag {original_char_tag} apparently successful.")
+                # self.flash_char_green(original_char_tag, revealed_color) # Flash it # Old call
+                if self.solution_symbol_display:
+                    self.solution_symbol_display.flash_symbol_color(
+                        original_line_idx, 
+                        original_char_idx, 
+                        flash_color="#22DD22", # Green flash
+                        duration_ms=300,
+                        original_color=self.solution_symbol_display.text_color # Revert to SSD's red
+                    )
+                logging.info(f"[SYMBOL_RETURN_DEBUG] flash_symbol_color for L{original_line_idx}C{original_char_idx} apparently successful.")
 
                 # Remove from falling symbols in Window C
                 self.falling_symbols.remove_symbol(symbol_index)
@@ -1375,6 +1386,14 @@ class GameplayScreen(tk.Toplevel):
     
             if expected_position:
                 line_idx, char_idx, required_char = expected_position
+                
+                # Stop pulsation if this was the character targeted by a worm
+                if self.currently_targeted_by_worm and \
+                   self.currently_targeted_by_worm['symbol_data'].get('line_idx') == line_idx and \
+                   self.currently_targeted_by_worm['symbol_data'].get('char_idx') == char_idx:
+                    if self.solution_symbol_display:
+                        self.solution_symbol_display.stop_specific_pulsation(f"pulse_{line_idx}_{char_idx}")
+                    self.currently_targeted_by_worm = None # Target resolved
                 
                 # Calculate target position in solution canvas
                 try:
@@ -1453,24 +1472,31 @@ class GameplayScreen(tk.Toplevel):
             # Add to visible chars
             self.visible_chars.add((line_idx, char_idx))
             
-            # Reveal character in canvas
-            char_tag = f"sol_{line_idx}_{char_idx}"
-            target_color = "#336699"  # A blue color for revealed characters
+            # Reveal character in canvas using SolutionSymbolDisplay
+            # char_tag = f"sol_{line_idx}_{char_idx}" # Old tag
+            # target_color = "#336699"  # A blue color for revealed characters # Old color
             
             try:
-                logging.info(f"[reveal_char] Preparing to update canvas item with tag '{char_tag}' to color '{target_color}' for char '{char_to_reveal_for_log}'.")
-                self.solution_canvas.itemconfig(char_tag, fill=target_color)
-                logging.info(f"[reveal_char] Successfully itemconfig-ed tag '{char_tag}' to '{target_color}'. Now flashing green.")
-                
-                # Flash the character green briefly
-                self.flash_char_green(char_tag, target_color)
+                if self.solution_symbol_display:
+                    logging.info(f"[reveal_char] Preparing to call solution_symbol_display.reveal_symbol for ({line_idx}, {char_idx}) for char '{char_to_reveal_for_log}'.")
+                    self.solution_symbol_display.reveal_symbol(line_idx, char_idx) # Uses its own red color
+                    logging.info(f"[reveal_char] Successfully called reveal_symbol. Now flashing green using SolutionSymbolDisplay.")
+                    
+                    # Flash the character green briefly using SolutionSymbolDisplay
+                    self.solution_symbol_display.flash_symbol_color(
+                        line_idx, 
+                        char_idx, 
+                        flash_color="#22DD22", # Green flash
+                        duration_ms=300,
+                        original_color=self.solution_symbol_display.text_color # Revert to SSD's red
+                    )
                 
                 # Trigger character-themed particle formation for significant characters
                 if self.lock_animation and char_to_reveal_for_log in "0123456789+-=xX":
                     self.lock_animation.react_to_character_reveal(char_to_reveal_for_log)
             
             except tk.TclError as e:
-                logging.warning(f"[reveal_char] TclError during itemconfig/flash for char '{char_to_reveal_for_log}' tag '{char_tag}' ({line_idx}, {char_idx}): {e}")
+                logging.warning(f"[reveal_char] TclError during itemconfig/flash for char '{char_to_reveal_for_log}' tag '{f"sol_{line_idx}_{char_idx}"}' ({line_idx}, {char_idx}): {e}")
                 
             # Check if this step is now complete
             self._check_if_step_complete(line_idx)
@@ -1478,7 +1504,7 @@ class GameplayScreen(tk.Toplevel):
             # Update lock segment visuals if appropriate
             self._check_for_lock_visual_update()
             
-            logging.info(f"[reveal_char] Successfully revealed character '{char_to_reveal_for_log}' (tag: {char_tag}) at position ({line_idx}, {char_idx}).")
+            logging.info(f"[reveal_char] Successfully revealed character '{char_to_reveal_for_log}' (tag: {f"sol_{line_idx}_{char_idx}"}) at position ({line_idx}, {char_idx}).")
                     
             # Log completion percentage for this line
             total_chars_in_line = len(current_line)
@@ -1514,50 +1540,74 @@ class GameplayScreen(tk.Toplevel):
             logging.error(f"Error updating lock visuals: {e}")
             
     def flash_char_green(self, tag, original_color):
-        """Makes a character flash bright green when correctly revealed"""
+        """Makes a character flash bright green when correctly revealed.
+        DEPRECATED: Functionality moved to SolutionSymbolDisplay.flash_symbol_color()
+        Kept for compatibility if any old direct calls exist, but should be removed later.
+        """
+        logging.warning("DEPRECATED GameplayScreen.flash_char_green called. Use SolutionSymbolDisplay.flash_symbol_color.")
+        # Try to parse tag "sol_{line_idx}_{char_idx}"
+        try:
+            parts = tag.split('_')
+            if len(parts) == 3 and parts[0] == 'sol':
+                line_idx, char_idx = int(parts[1]), int(parts[2])
+                if self.solution_symbol_display:
+                    target_original_color = self.solution_symbol_display.text_color # Default to SSD's red
+                    # If the original_color passed was different, it implies a special case.
+                    # For now, the new system flashes green then reverts to SSD's standard red.
+                    self.solution_symbol_display.flash_symbol_color(line_idx, char_idx, "#22DD22", 300, target_original_color)
+                    return
+        except Exception:
+            logging.error(f"Could not parse deprecated flash_char_green tag: {tag}")
+
+        # Fallback to old logic if parsing failed or no solution_symbol_display
         if not self.winfo_exists(): 
             return
             
         try:
             # Flash the character green
             flash_color = "#22DD22"
-            logging.info(f"Flashing tag {tag} to {flash_color}, will return to {original_color}")
+            # logging.info(f"Flashing tag {tag} to {flash_color}, will return to {original_color}") # Old logging
 
             # Create a unique ID for this flash to avoid conflicts with after_cancel
-            flash_id = f"flash_{tag}_{time.time()}"
-            self.flash_ids[flash_id] = True
+            # flash_id = f"flash_{tag}_{time.time()}" # Old flash_id management
+            # self.flash_ids[flash_id] = True
             
             self.solution_canvas.itemconfig(tag, fill=flash_color)
             
             # Schedule reset back to black after 300ms
             def reset_color():
-                if self.winfo_exists() and flash_id in self.flash_ids: # Check key presence before del
+                # if self.winfo_exists() and flash_id in self.flash_ids: # Check key presence before del # Old
+                if self.winfo_exists():
                     try:
                         self.solution_canvas.itemconfig(tag, fill=original_color)
                     except tk.TclError:
                         pass # Item might be gone
-                    finally:
+                    # finally: # Old
                         # Always remove the flash_id from tracking once its timer has executed or attempted
-                        del self.flash_ids[flash_id]
+                        # del self.flash_ids[flash_id]
                         
-            self.flash_ids[flash_id] = self.after(300, reset_color) # Store the timer ID with the unique key
+            # self.flash_ids[flash_id] = self.after(300, reset_color) # Store the timer ID with the unique key #Old
+            self.after(300, reset_color) 
             
         except tk.TclError:
             # Item might be gone already
             pass
 
     def reset_char_color(self, tag, color):
-        """Resets character color after flashing"""
+        """Resets character color after flashing.
+        DEPRECATED: Functionality moved to SolutionSymbolDisplay.
+        """
+        logging.warning("DEPRECATED GameplayScreen.reset_char_color called.")
         if not self.winfo_exists(): return
         try:
-            logging.info(f"[reset_char_color] Resetting tag '{tag}' to color '{color}'.")
+            # logging.info(f"[reset_char_color] Resetting tag '{tag}' to color '{color}'.") # Old
             self.solution_canvas.itemconfig(tag, fill=color)
-            logging.info(f"[reset_char_color] Successfully set tag '{tag}' to '{color}'.")
-            if tag in self.flash_ids:
-                del self.flash_ids[tag] # Clean up flash ID
+            # logging.info(f"[reset_char_color] Successfully set tag '{tag}' to '{color}'.") # Old
+            # if tag in self.flash_ids: # Old
+                # del self.flash_ids[tag] # Clean up flash ID # Old
         except tk.TclError as e:
-             logging.warning(f"[reset_char_color] TclError for tag '{tag}' (color: {color}): {e}. Item might have been deleted or window closed.")
-             if tag in self.flash_ids: del self.flash_ids[tag]
+             logging.warning(f"[reset_char_color DEPRECATED] TclError for tag '{tag}' (color: {color}): {e}.")
+             # if tag in self.flash_ids: del self.flash_ids[tag] # Old
              pass
 
     # The draw_crack_effect method has been moved to the ErrorAnimation class
@@ -1909,12 +1959,14 @@ class GameplayScreen(tk.Toplevel):
 
     def clear_all_cracks(self):
         """Clears all cracks from both canvases"""
-        if hasattr(self, 'solution_canvas'):
-            self.solution_canvas.delete("crack")
-        if hasattr(self, 'symbol_canvas'):
-            self.symbol_canvas.delete("crack")
+        # if hasattr(self, 'solution_canvas'): # Solution canvas cracks were not standard
+            # self.solution_canvas.delete("crack")
+        if hasattr(self, 'symbol_canvas'): # Symbol canvas (Window C) uses error_animation for cracks
+            # self.symbol_canvas.delete("crack") # Old direct deletion
+            pass # Now handled by error_animation.clear_all_cracks()
+
         if hasattr(self, 'error_animation') and self.error_animation:
-            self.error_animation.clear_all_cracks()
+            self.error_animation.clear_all_cracks() # This is for Window C (symbol_canvas)
 
     def destroy(self):
         """Clean up resources before destroying the window"""
@@ -1938,15 +1990,17 @@ class GameplayScreen(tk.Toplevel):
             self.after_cancel(self.auto_save_after_id)
             self.auto_save_after_id = None
             
-        # Cancel any flash timers
-        if hasattr(self, 'flash_ids'):
-            for unique_key, timer_id_val in list(self.flash_ids.items()): # Iterate over a copy of items
-                if timer_id_val:
-                    try:
-                        self.after_cancel(timer_id_val)
-                    except Exception as e:
-                        logging.warning(f"Error cancelling flash timer ID {timer_id_val} for key {unique_key}: {e}")
-            self.flash_ids.clear() # Clear all tracked flash timers
+        # Cancel any flash timers - Now handled by SolutionSymbolDisplay
+        # if hasattr(self, 'flash_ids'):
+        #     for unique_key, timer_id_val in list(self.flash_ids.items()): # Iterate over a copy of items
+        #         if timer_id_val:
+        #             try:
+        #                 self.after_cancel(timer_id_val)
+        #             except Exception as e:
+        #                 logging.warning(f"Error cancelling flash timer ID {timer_id_val} for key {unique_key}: {e}")
+        #     self.flash_ids.clear() # Clear all tracked flash timers
+        if self.solution_symbol_display:
+            self.solution_symbol_display.stop_all_pulsations() # Ensure its animations are stopped
         
         # Manage save state more explicitly based on game_over status
         if self.game_over:
@@ -2139,44 +2193,17 @@ class GameplayScreen(tk.Toplevel):
         # If it's not empty, it means a non-space character is next, so no need for an extra check here.
 
     def get_solution_char_coords(self, line_idx, char_idx):
-        """Calculate the exact coordinates for a character in the solution canvas"""
-        canvas_width = self.solution_canvas.winfo_width()
-        canvas_height = self.solution_canvas.winfo_height()
-        
-        # Use same calculations as in draw_solution_lines
-        offset = canvas_height / 3
-        available_height = canvas_height * 2 / 3
-        num_lines = 8 # Matches draw_solution_lines
-        line_height = available_height / (num_lines + 1) # Matches draw_solution_lines
-        char_width = 30 # Reduced character width, matches draw_solution_lines
-        
-        # Calculate position
-        y_pos = offset + line_height * (line_idx + 1)
-        
-        # Ensure line_idx is within bounds before accessing current_solution_steps
-        if line_idx < 0 or line_idx >= len(self.current_solution_steps):
-            logging.error(f"get_solution_char_coords: line_idx {line_idx} out of bounds for current_solution_steps (len {len(self.current_solution_steps)})")
-            # Return a default coordinate or handle error appropriately
-            return (canvas_width / 2, canvas_height / 2) # Fallback to canvas center
-
-        line_text = self.current_solution_steps[line_idx]
-        
-        # Ensure char_idx is within bounds for the line_text
-        if char_idx < 0 or char_idx >= len(line_text):
-            logging.error(f"get_solution_char_coords: char_idx {char_idx} out of bounds for line_text (len {len(line_text)}) at line_idx {line_idx}")
-            return (canvas_width / 2, canvas_height / 2) # Fallback
-
-        total_text_width = len(line_text) * char_width
-        x_start = (canvas_width - total_text_width) / 2
-        
-        # Calculate the left edge of the character
-        char_left_x = x_start + char_idx * char_width
-        
-        # Target coordinates should be the center of the character cell
-        x_target_center = char_left_x + (char_width / 2)
-        y_target_center = y_pos # y_pos is already the vertical center for anchor='w' used in drawing
-
-        return (x_target_center, y_target_center)
+        """Calculate the exact coordinates for a character in the solution canvas.
+        Delegates to SolutionSymbolDisplay.
+        """
+        if self.solution_symbol_display:
+            return self.solution_symbol_display.get_symbol_coordinates(line_idx, char_idx)
+        else:
+            # Fallback if solution_symbol_display is not initialized (should not happen in normal operation)
+            logging.warning("GameplayScreen.get_solution_char_coords called before solution_symbol_display was initialized.")
+            canvas_width = self.solution_canvas.winfo_width() if hasattr(self, 'solution_canvas') and self.solution_canvas.winfo_exists() else 600
+            canvas_height = self.solution_canvas.winfo_height() if hasattr(self, 'solution_canvas') and self.solution_canvas.winfo_exists() else 400
+            return (canvas_width / 2, canvas_height / 2)
 
 # --- Main execution (for testing) ---
 if __name__ == "__main__":
