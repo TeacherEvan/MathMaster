@@ -1308,15 +1308,20 @@ class GameplayScreen(tk.Toplevel):
             original_char_tag = clicked_symbol_info['original_char_tag']
             revealed_color = "#336699"  # Standard revealed color
 
-            logging.info(f"Clicked symbol '{clicked_char}' was transported by a worm. Returning to Window B at ({original_line_idx}, {original_char_idx}).")
+            logging.info(f"[SYMBOL_RETURN_DEBUG] Clicked '{clicked_char}' (transported). Original: L{original_line_idx}C{original_char_idx}, Tag: {original_char_tag}.")
+            logging.info(f"[SYMBOL_RETURN_DEBUG] self.visible_chars BEFORE add: {self.visible_chars}")
 
             # Make it visible again in Window B
             try:
-                # Ensure the character's canvas item exists or is correctly configured by redrawing
-                # self.solution_canvas.itemconfig(original_char_tag, fill=revealed_color) # Itemconfig alone might not be enough if item state is problematic
-                self.visible_chars.add((original_line_idx, original_char_idx)) # Add back to visible set
+                self.visible_chars.add((original_line_idx, original_char_idx))
+                logging.info(f"[SYMBOL_RETURN_DEBUG] self.visible_chars AFTER add: {self.visible_chars}")
+
+                logging.info(f"[SYMBOL_RETURN_DEBUG] Calling self.draw_solution_lines() to redraw Window B.")
                 self.draw_solution_lines() # Redraw lines to ensure the character appears correctly
+                logging.info(f"[SYMBOL_RETURN_DEBUG] self.draw_solution_lines() finished. Attempting flash_char_green for tag {original_char_tag}.")
+                
                 self.flash_char_green(original_char_tag, revealed_color) # Flash it
+                logging.info(f"[SYMBOL_RETURN_DEBUG] flash_char_green for tag {original_char_tag} apparently successful.")
 
                 # Remove from falling symbols in Window C
                 self.falling_symbols.remove_symbol(symbol_index)
