@@ -370,6 +370,9 @@ class SymbolTeleportManager:
         self.error_effect = ErrorEffect(canvas_c)
         self.glow_effect = GlowEffect(canvas_b)
         self.active_symbols: Dict[int, bool] = {}  # Track active symbols and their side
+        self.teleport_timers = []
+        self.active_particles = []
+        self.currently_teleporting = False
         
     def teleport_symbol(self, symbol_id: int, start_pos: Tuple[float, float], 
                        end_pos: Tuple[float, float], is_correct: bool, 
@@ -414,3 +417,35 @@ class SymbolTeleportManager:
         if symbol_id in self.active_symbols:
             self.glow_effect.stop_glow(symbol_id)
             del self.active_symbols[symbol_id] 
+
+    def clear_pending_operations(self):
+        """Clear any pending teleport operations to prevent errors during transitions"""
+        try:
+            # Cancel any ongoing animations
+            if hasattr(self, 'teleport_timers') and self.teleport_timers:
+                for timer_id in self.teleport_timers:
+                    try:
+                        if self.canvas_c.winfo_exists():
+                            self.canvas_c.after_cancel(timer_id)
+                    except Exception:
+                        pass
+                self.teleport_timers = []
+                
+            # Cancel any active particles
+            if hasattr(self, 'active_particles') and self.active_particles:
+                for particle_id in self.active_particles:
+                    try:
+                        if self.canvas_c.winfo_exists():
+                            self.canvas_c.delete(particle_id)
+                    except Exception:
+                        pass
+                self.active_particles = []
+                
+            # Reset any other state
+            self.currently_teleporting = False
+            
+            logging.info("Teleport manager pending operations cleared")
+            return True
+        except Exception as e:
+            logging.error(f"Error clearing teleport operations: {e}")
+            return False 

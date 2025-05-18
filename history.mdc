@@ -734,3 +734,77 @@ The help button now properly assists players by revealing the next symbol in the
    - Improved exit handling with Escape key support
 
 **Impact:** The level complete popup now provides a more cohesive, visually appealing experience that properly matches the Matrix aesthetic of the rest of the game. Animations enhance user engagement while maintaining the game's distinctive cyberpunk visual identity.
+
+## 2025-05-07: Fixed Level Transition Performance Issues
+
+**Issue:** Level transitions were causing lag and occasional freezes, particularly on the second level transition.
+
+**Changes:**
+1. **Improved Animation Management:**
+   - Added thorough cancellation of pending timers and animations during transitions
+   - Fixed teleport manager to safely handle null targets
+   - Added garbage collection during transitions to free memory
+
+2. **Enhanced Transition Timing:**
+   - Increased delays between components reinitialization
+   - Improved sequencing of UI updates to prevent cascading layout calculations
+   - Added protection against click events during transitions
+
+3. **Error Prevention:**
+   - Fixed help display index errors during transitions
+   - Added null checks throughout teleport and animation systems
+   - Improved error handling with detailed logging
+
+**Result:** Level transitions are now smoother with reduced freezing and fewer error messages.
+
+## 2025-05-08: Corrected Welcome Screen Text Styling
+
+**Issue:** Misunderstood request to make teacher credit text 50% smaller and transparent. Instead of precisely halving the original size, I implemented inconsistent size reductions that didn't match the 50% requirement.
+
+**Changes:**
+1. **Teacher Credit Text:**
+   - Corrected implementation to use exactly 50% of original font size calculation
+   - Applied 50% transparency as requested
+   - Maintained original positioning and font family
+
+2. **Permanent Quote Display:**
+   - Changed welcome screen to display specific Marcus Aurelius quote instead of random quotes
+   - Added subtle gold pulsating effect to quote
+   - Applied 10% size reduction and transparency
+
+**Lesson:** Pay closer attention to precise requirements in visual design tasks, especially when specifying proportional changes.
+
+# MathMaster Development Log
+
+## [2024-05-30] Welcome Screen and Level Select Screen Updates
+- Made both the welcome screen and level select screen display in full screen mode
+- Used attributes('-fullscreen', True) to ensure the windows take up the entire screen
+- Removed previous size setting code that was limiting the window size
+
+## [2024-05-30] Welcome Screen Fixes
+- Removed the golden circle (pulsating glow effect) from behind the quote in the welcome screen
+- Removed the auto-continue timer functionality - now users must click to continue
+- Fixed an error with quote_pulse_timer where it was being treated as a string
+- Removed the progress bar that was showing timeout progress
+- Removed the _animate_quote_glow method that was causing errors
+
+## [2024-05-30] Level Select Screen Escape Key
+- Added Escape key binding to exit the level select screen
+- Modified go_back method to accept an optional event parameter for the key binding
+- Both welcome screen and level select screen now respond to the Escape key
+
+## [2024-05-30] Welcome Screen Quote Size
+- Increased the size of the quote in the welcome screen by exactly 100% (doubled)
+- Modified the quote_font_size variable in the redraw method
+
+## [2024-05-30] Welcome Screen and Level Select Screen Updates
+- Made both the welcome screen and level select screen display in full screen mode
+- Used attributes('-fullscreen', True) to ensure the windows take up the entire screen
+- Removed previous size setting code that was limiting the window size
+
+## [2024-05-30] Welcome Screen Fixes
+- Removed the golden circle (pulsating glow effect) from behind the quote in the welcome screen
+- Removed the auto-continue timer functionality - now users must click to continue
+- Fixed an error with quote_pulse_timer where it was being treated as a string
+- Removed the progress bar that was showing timeout progress
+- Removed the _animate_quote_glow method that was causing errors

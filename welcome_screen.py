@@ -3,6 +3,7 @@ import time
 import os
 import datetime
 import logging
+import math  # Added for pulsating calculations
 from gameplay_screen import GameplayScreen
 from level_select_screen import LevelSelectScreen
 from stoic_quotes import get_random_quote
@@ -43,9 +44,8 @@ class WelcomeScreen(tk.Tk):
         # Log application start
         logging.info("MathMaster application started")
         
-        # Make the window responsive and set default size
-        self.geometry("800x600")
-        self.minsize(600, 400)
+        # Make the window full screen
+        self.attributes('-fullscreen', True)
         
         # Bind resize event
         self.bind("<Configure>", self.on_resize)
@@ -53,10 +53,6 @@ class WelcomeScreen(tk.Tk):
         # Track if user has clicked anywhere
         self.clicked = False
         self.bind("<Button-1>", self.on_click)
-        
-        # Timer variables
-        self.start_time = time.time()
-        self.timeout = 8  # seconds before auto-continue
         
         # Create the main layout
         self.create_layout()
@@ -66,8 +62,10 @@ class WelcomeScreen(tk.Tk):
         self.math_symbols = MathSymbols(self.canvas, MATH_SYMBOLS)
         self.progress_bar = ProgressBar(self.canvas)
         
-        # Get a random stoic quote for display
-        self.stoic_quote = get_random_quote()
+        # Use specific Marcus Aurelius quote instead of random
+        self.stoic_quote = "If it is not right, do not do it; if it is not true, do not say it. - Marcus Aurelius"
+        self.quote_pulse_phase = 0.0  # For pulsating effect
+        self.quote_pulse_timer = None  # For tracking the pulse animation
         
         # Draw the initial content
         self.redraw()
@@ -97,23 +95,6 @@ class WelcomeScreen(tk.Tk):
             self.clicked = True
             # Use after to schedule the transition with a small delay to allow the UI to update
             self.after(100, self.schedule_transition)
-    
-    def check_timeout(self):
-        """Check if timeout has occurred"""
-        # Only proceed if not already clicked
-        if self.clicked:
-            return
-            
-        elapsed = time.time() - self.start_time
-        if elapsed > self.timeout:
-            logging.info("Auto-continue timeout reached")
-            self.clicked = True  # Set clicked first to prevent multiple calls
-            # Use after to schedule the transition with a small delay
-            self.after(100, self.schedule_transition)
-        else:
-            # Update progress indicator
-            progress = min(1.0, elapsed / self.timeout)
-            self.progress_bar.draw(progress)
     
     def schedule_transition(self):
         """Schedule the transition to level select with proper state management"""
@@ -152,15 +133,18 @@ class WelcomeScreen(tk.Tk):
     def exit_game(self, event=None):
         """Exit the game"""
         logging.info("User exited the application.")
+        
+        # Clean up the quote pulse timer
+        if hasattr(self, 'quote_pulse_timer') and self.quote_pulse_timer:
+            self.after_cancel(self.quote_pulse_timer)
+            self.quote_pulse_timer = None
+        
         self.destroy() # Destroy the root window (WelcomeScreen)
 
     def animate(self):
         """Animation loop"""
         if not self.clicked:
             try:
-                # Check timeout if the user hasn't clicked/transitioned yet
-                self.check_timeout()
-                
                 # Update visual elements
                 self.math_symbols.update_positions()
                 
@@ -218,24 +202,29 @@ class WelcomeScreen(tk.Tk):
         )
         
         # Add creator credit below title
-        credit_font_size = max(12, min(width // 40, 20))
+        original_font_size = max(12, min(width // 40, 20))
+        credit_font_size = original_font_size // 2  # Exactly 50% of original size
         self.canvas.create_text(
             width // 2, height // 4 + 30,
             text="Created By Teacher Evan (Ewaldt Botha)",
             font=("Helvetica", credit_font_size, "bold italic"),
-            fill="#88FF88",  # Lighter green for subtitle
+            fill=self._get_hex_with_alpha("#88FF88", 0.5),  # 50% transparent
             tags="creator_credit"
         )
         
         # Draw stoic quote in the center 
         quote_font_size = max(14, min(width // 35, 24))
+        quote_font_size = int(quote_font_size * 0.9)  # 10% smaller as requested
+        # Double the quote size by multiplying by 2
+        quote_font_size = quote_font_size * 2
         quote_width = width * 0.8  # Use 80% of the width for the quote
         
-        self.canvas.create_text(
+        # Create the quote text without the golden glow
+        quote_id = self.canvas.create_text(
             width // 2, height // 2,
             text=self.stoic_quote,
-            font=("Helvetica", quote_font_size),
-            fill="#00FF00",  # Matrix green
+            font=("Helvetica", quote_font_size, "italic"),
+            fill=self._get_hex_with_alpha("#FFD700", 0.7),  # Gold with 30% transparency
             width=quote_width,
             justify=tk.CENTER,
             tags="stoic_quote"
@@ -250,9 +239,6 @@ class WelcomeScreen(tk.Tk):
             fill="#AAFFAA",
             tags="instruction"
         )
-        
-        # Draw progress bar (empty initially)
-        self.progress_bar.draw(0)
 
     def _get_hex_with_alpha(self, hex_color, alpha):
         """Convert a hex color and alpha value to a hex color with the specified transparency"""

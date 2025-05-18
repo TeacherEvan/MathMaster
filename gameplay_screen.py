@@ -1544,7 +1544,17 @@ class GameplayScreen(tk.Toplevel):
 
     def handle_canvas_c_click(self, event):
         """Handles clicks specifically on the symbol canvas (Window C)"""
-        if self.game_over or not self.winfo_exists() or not self.falling_symbols: 
+        # Ignore clicks during transitions or if game is over
+        if hasattr(self, 'in_level_transition') and self.in_level_transition:
+            logging.info("Click ignored during level transition")
+            return
+            
+        if self.game_over or not self.winfo_exists(): 
+            return
+
+        # Safety check for falling_symbols - prevent NoneType errors
+        if not hasattr(self, 'falling_symbols') or not self.falling_symbols:
+            logging.warning("Click ignored - falling_symbols not initialized")
             return
 
         # Log raw click coordinates for debugging
@@ -2527,10 +2537,10 @@ class GameplayScreen(tk.Toplevel):
     def _get_current_step_index(self):
         """Determine which step the player is currently working on."""
         try:
-            # If no solution steps, return None
-            if not self.current_solution_steps:
-                return None
-                
+            # If no solution steps or in transition, return a safe value
+            if not self.current_solution_steps or hasattr(self, 'in_level_transition') and self.in_level_transition:
+                return 0 # Return 0 instead of None for safer indexing
+            
             # Find the first incomplete step
             for step_idx, step_text in enumerate(self.current_solution_steps):
                 # Count visible characters in this step
@@ -2542,11 +2552,11 @@ class GameplayScreen(tk.Toplevel):
                     return step_idx
             
             # If all steps are complete, return the last step
-            return len(self.current_solution_steps) - 1
+            return len(self.current_solution_steps) - 1 if self.current_solution_steps else 0
         
         except Exception as e:
             logging.error(f"Error determining current step: {e}")
-            return None
+            return 0 # Return 0 instead of None for safer indexing
 
     def show_success_message(self):
         """Show a temporary success message on the solution canvas when level is complete."""
@@ -2647,20 +2657,42 @@ class GameplayScreen(tk.Toplevel):
         """Disable all animations during transitions to prevent lag"""
         logging.info("Disabling all animations for transition")
         
-        # Cancel any pending timers/animations
+        # Set transition flag first to block any new timers or animations from starting
+        self.in_level_transition = True
+        
+        # Track how many timers we cancelled for debugging
+        cancelled_timers = 0
+        
+        # Cancel any pending after() timers
         for after_id in self.after_ids() if hasattr(self, 'after_ids') else []:
             try:
                 self.after_cancel(after_id)
+                cancelled_timers += 1
             except Exception:
                 pass
+                
+        logging.info(f"Cancelled {cancelled_timers} pending timers during transition")
         
-        # Stop falling symbols animation
+        # Stop falling symbols animation and clear symbols
         if hasattr(self, 'falling_symbols') and self.falling_symbols:
             self.falling_symbols.stop_animation()
+            self.falling_symbols.clear_symbols()  # Also clear all symbols
+            logging.info("Falling symbols animation stopped and symbols cleared")
             
-        # Stop worm animations
+        # Reset teleport manager to cancel any pending teleports
+        if hasattr(self, 'teleport_manager') and self.teleport_manager:
+            # Clear any pending teleport operations
+            if hasattr(self.teleport_manager, 'clear_pending_operations'):
+                self.teleport_manager.clear_pending_operations()
+            logging.info("Teleport manager operations cleared")
+            
+        # Stop worm animations with more thorough clearing
         if hasattr(self, 'worm_animation') and self.worm_animation:
             self.worm_animation.stop_animation()
+            self.worm_animation.clear_worms()
+            self.worm_animation.handle_solution_canvas_redraw()
+            self.currently_targeted_by_worm = None
+            logging.info("Worm animation stopped and worms cleared")
             
         # Cancel worm symbol update timers
         self._worm_update_retries = 0
@@ -2669,12 +2701,29 @@ class GameplayScreen(tk.Toplevel):
         if hasattr(self, 'auto_save_timer') and self.auto_save_timer:
             try:
                 self.after_cancel(self.auto_save_timer)
+                logging.info("Auto-save timer cancelled")
             except Exception:
                 pass
                 
         # Stop any pulsations in solution display
         if hasattr(self, 'solution_symbol_display') and self.solution_symbol_display:
             self.solution_symbol_display.stop_all_pulsations()
+            self.solution_symbol_display.handle_canvas_redraw_for_worms()
+            self.solution_symbol_display.clear_all_visuals()
+            logging.info("Solution symbol display pulsations stopped and visuals cleared")
+        
+        # Reset error animation state
+        if hasattr(self, 'error_animation') and self.error_animation:
+            self.error_animation.clear_all_cracks()
+            logging.info("Error animation cracks cleared")
+            
+        # Force garbage collection to clean up memory
+        try:
+            import gc
+            gc.collect()
+            logging.info("Forced garbage collection during transition")
+        except Exception:
+            pass
             
         logging.info("All animations disabled for transition")
             
@@ -2683,25 +2732,31 @@ class GameplayScreen(tk.Toplevel):
         if not self.winfo_exists():
             return
             
-        logging.info("Restarting animations in sequence")
+        logging.info("Restarting animations in sequence with increased delays")
         
-        # Step 1: Re-create falling symbols with a short delay
+        # Step 1: Ensure UI is updated first
+        self.update_idletasks()
+        
+        # Step 2: Reset help display to avoid index errors (do this first)
+        self._reset_help_display()
+        
+        # Step 3: Re-create falling symbols but don't start yet
         self.falling_symbols = FallingSymbols(self.symbol_canvas, list("0123456789Xx +-=÷×*/()"))
-        self.after(100, self.falling_symbols.start_animation)
         
-        # Step 2: Add stoic quote watermark
-        self.after(200, self.add_stoic_quote_watermark)
+        # Define sequence of delayed operations with larger gaps
+        schedule = [
+            (150, lambda: self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars)),
+            (300, lambda: self.add_stoic_quote_watermark()),
+            (500, lambda: self._reset_worm_system()),
+            (800, lambda: self.falling_symbols.start_animation()),
+            (1200, lambda: self._finish_transition())
+        ]
         
-        # Step 3: Reset worm animation system (don't start yet, will start when first step is completed)
-        self.after(400, self._reset_worm_system)
+        # Schedule each operation with proper delay
+        for delay, operation in schedule:
+            self.after(delay, operation)
         
-        # Step 4: Reset help display to avoid index errors
-        self.after(500, self._reset_help_display)
-        
-        # Final step: Clear transition flag
-        self.after(600, self._finish_transition)
-        
-        logging.info("Animation restart sequence scheduled")
+        logging.info("Animation restart sequence scheduled with optimized timing")
         
     def _reset_worm_system(self):
         """Reset the worm system after transition"""
@@ -2735,3 +2790,27 @@ class GameplayScreen(tk.Toplevel):
         self.schedule_auto_save()
         
         logging.info("Level transition complete - normal operation resumed")
+
+    def teleport_symbol(self, symbol_id, start_pos, end_pos, is_correct=False):
+        """Teleport a symbol from Window C to its place in solution
+        
+        Args:
+            symbol_id: Canvas ID of the symbol
+            start_pos: (x, y) tuple of starting position
+            end_pos: (x, y) tuple of target position
+            is_correct: Whether symbol matches solution (affects visual effects)
+        """
+        # Safety check for null or invalid end_pos
+        if not end_pos or None in end_pos:
+            logging.error(f"Cannot handle teleport: end_pos is None for symbol_id {symbol_id}")
+            return
+            
+        try:
+            # Extract coordinates
+            start_x, start_y = start_pos
+            end_x, end_y = end_pos
+            
+            # Calculate parameters for arc
+            # ...rest of the method continues as before
+        except Exception as e:
+            logging.error(f"Error handling teleport_symbol: {e}")

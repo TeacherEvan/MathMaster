@@ -11,14 +11,8 @@ class LevelSelectScreen(tk.Toplevel):
         self.parent = parent # Keep a reference to the parent (WelcomeScreen)
         self.title("MathMaster - Level Selection")
         
-        # Inherit parent size and position for automatic scaling
-        parent_width = parent.winfo_width()
-        parent_height = parent.winfo_height()
-        parent_x = parent.winfo_x()
-        parent_y = parent.winfo_y()
-        
-        # Apply parent geometry
-        self.geometry(f"{parent_width}x{parent_height}+{parent_x}+{parent_y}")
+        # Set to full screen immediately
+        self.attributes('-fullscreen', True)
         
         self.configure(bg="#000000") # Black background
         self.resizable(True, True) # Allow resizing
@@ -26,6 +20,9 @@ class LevelSelectScreen(tk.Toplevel):
         # Explicitly set visibility and focus
         self.attributes('-alpha', 1.0)
         self.focus_force()
+        
+        # Bind Escape key to exit
+        self.bind("<Escape>", self.go_back)
         
         # --- Title ---
         title_label = tk.Label(
@@ -149,7 +146,7 @@ class LevelSelectScreen(tk.Toplevel):
         game_window.protocol("WM_DELETE_WINDOW", lambda: self.handle_game_window_close(game_window))
 
 
-    def go_back(self):
+    def go_back(self, event=None):
         """Closes the level select screen and shows the welcome screen again."""
         logging.info("User returned to Welcome Screen from Level Select.")
         
