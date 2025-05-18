@@ -20,6 +20,7 @@ class FallingSymbols:
         self.symbols_list = symbols_list or list("0123456789Xx +-=÷×*/()")
         self.game_over = False
         self.generation_rate = 0.60  # 60% chance to generate a new symbol
+        logging.info(f"FallingSymbols instance {id(self)} created. Initial generation_rate: {self.generation_rate}. Symbols list length: {len(self.symbols_list)}")
         
     def animate_falling_symbols(self):
         """Manages the animation loop for falling symbols"""

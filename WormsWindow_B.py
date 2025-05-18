@@ -14,7 +14,7 @@ class WormAnimation:
             canvas_width: Optional initial width of the canvas
             canvas_height: Optional initial height of the canvas
             symbol_transport_callback: Callback function when a symbol is transported
-                                      Should accept (symbol_id, char) parameters
+                                      Should accept (line_idx, char_idx, char) parameters
             symbol_targeted_for_steal_callback: Callback when a worm targets a symbol for stealing
                                               Should accept (worm_id, symbol_data dict)
         """
@@ -817,18 +817,18 @@ class WormAnimation:
     def _transport_random_symbol(self):
         """Selects a random visible symbol and a random worm to transport it."""
         if not self.solution_symbols or not self.worms or not self.interaction_enabled:
+            self._schedule_symbol_transport()
             return
 
         # Filter for symbols that are actually drawn (have a valid ID) and not already targeted
-        # Also ensure they are marked as 'visible_to_player' by gameplay_screen
         available_symbols_to_steal = [
             s for s in self.solution_symbols 
             if s.get('id') != -1 and not s.get('is_placeholder') and s.get('visible_to_player')
             and s.get('id') not in [w.get('target_symbol', {}).get('id') for w in self.worms if w.get('target_symbol')]
         ]
-
         if not available_symbols_to_steal:
             logging.info("No available (non-placeholder, visible to player, not already targeted) solution symbols for worms to transport.")
+            self._schedule_symbol_transport()
             return
 
         # Select a random worm that is not currently transporting or targeting
@@ -865,7 +865,11 @@ class WormAnimation:
         """Make a worm target a symbol for transport"""
         # Store the target
         worm['transport_target'] = symbol
-        
+        # Store detailed identifying information for the callback
+        worm['target_line_idx'] = symbol.get('line_idx')
+        worm['target_char_idx'] = symbol.get('char_idx')
+        worm['target_char_original'] = symbol.get('char')
+
         # Make worm open its mouth
         worm['mouth_state'] = 1
         worm['mouth_timer'] = 9999  # Keep mouth open until transport complete
@@ -905,130 +909,130 @@ class WormAnimation:
     
     def _begin_transport_animation(self, worm, symbol):
         """Begin animating the symbol being transported to Window C"""
-        # --- NEW: Check if transport was aborted (e.g., by rescue) before starting --- 
-        if not worm.get('transport_target') or worm.get('transport_target').get('id') != symbol.get('id'):
-            logging.info(f"Transport animation for worm {worm['id']} and symbol {symbol.get('id')} aborted before start (target is None or changed). Symbol may have been rescued.")
-            # Ensure worm state is reset if it was about to transport this specific symbol
-            if worm.get('transport_target') is None: # Check if it was cleared by rescue
+        # --- NEW: Check if transport was aborted (e.g., by rescue) before starting ---
+        current_target_in_worm = worm.get('transport_target')
+        symbol_canvas_id = symbol.get('id') # Original canvas ID of the symbol when targeting began
+
+        if not current_target_in_worm or current_target_in_worm.get('id') != symbol_canvas_id:
+            logging.info(f"Transport animation for worm {worm['id']} and original symbol canvas ID {symbol_canvas_id} aborted before start (target is None or changed). Symbol may have been rescued or worm retargeted.")
+            if not current_target_in_worm: # If target was cleared entirely
                 worm['mouth_state'] = 0
                 worm['speed_multiplier'] = worm.get('original_speed_before_push', 1.0)
+                # Clear specific target details if no longer relevant
+                for key_to_clear in ['target_line_idx', 'target_char_idx', 'target_char_original']:
+                    if key_to_clear in worm:
+                        del worm[key_to_clear]
             return
-        # --- END NEW --- 
+        # --- END NEW ---
+        
+        # Capture original line/char indices and char for the callback
+        original_line_idx_for_this_task = worm.get('target_line_idx')
+        original_char_idx_for_this_task = worm.get('target_char_idx')
+        original_char_for_this_task = worm.get('target_char_original')
 
-        # Get symbol info
-        symbol_id = symbol.get('id')
-        if not symbol_id:
-            # Clean up and return
+        if original_line_idx_for_this_task is None or \
+           original_char_idx_for_this_task is None or \
+           original_char_for_this_task is None:
+            logging.error(f"Worm {worm.get('id')}: Critical target details (line_idx, char_idx, char) missing at start of _begin_transport_animation for symbol: {symbol}")
             worm['transport_target'] = None
             worm['mouth_state'] = 0
+            if 'original_speed_before_push' in worm:
+                 worm['speed_multiplier'] = worm['original_speed_before_push']
+            for key_to_clear in ['target_line_idx', 'target_char_idx', 'target_char_original']:
+                if key_to_clear in worm:
+                    del worm[key_to_clear]
             return
-            
+
         try:
-            # Get symbol's current position and the top edge of window
-            sym_pos = self.canvas.coords(symbol_id)
-            if not sym_pos:
-                # Symbol might be gone
+            sym_pos_on_canvas = self.canvas.coords(symbol_canvas_id)
+            if not sym_pos_on_canvas:
+                logging.warning(f"Worm {worm.get('id')}: Symbol with canvas_id {symbol_canvas_id} gone from canvas at start of transport animation.")
                 worm['transport_target'] = None
                 worm['mouth_state'] = 0
+                if 'original_speed_before_push' in worm:
+                    worm['speed_multiplier'] = worm['original_speed_before_push']
+                for key_to_clear in ['target_line_idx', 'target_char_idx', 'target_char_original']:
+                    if key_to_clear in worm:
+                        del worm[key_to_clear]
                 return
-                
-            # Store initial position
-            start_x, start_y = sym_pos
-            
-            # Target is top of window with same x-coordinate
-            end_y = -50  # Above the visible window
-            
-            # Animation parameters for a gentler push
-            total_steps = 60  # Increased steps for smoother, slower animation
+
+            start_x, start_y = sym_pos_on_canvas[0], sym_pos_on_canvas[1]
+            end_y = -50
+            total_steps = 60
             current_step = 0
-            
-            # Store original worm speed and reduce for pushing animation
-            original_worm_speed = worm.get('speed_multiplier', 1.0) # Assume default 1.0
-            worm['speed_multiplier'] = 0.3 # Slower speed while pushing
-            worm['original_speed_before_push'] = original_worm_speed # Store it for restoration
-            
-            # Capture the symbol_id at the start of this specific transport task
-            # This is important because worm['transport_target'] might be cleared by an external event (like canvas redraw)
-            original_symbol_id_for_this_task = symbol_id
-            original_char_for_this_task = symbol.get('char', '') # Capture char as well, as 'symbol' dict might become stale if list is rebuilt
+            original_worm_speed = worm.get('speed_multiplier', 1.0)
+            worm['speed_multiplier'] = 0.3
+            worm['original_speed_before_push'] = original_worm_speed
 
             def animate_transport():
                 nonlocal current_step
-                # Check if this transport task has been invalidated by an external event
-                # (e.g., canvas redraw causing worm's target to be cleared or changed)
                 current_worm_target = worm.get('transport_target')
-                if not current_worm_target or current_worm_target.get('id') != original_symbol_id_for_this_task:
-                    logging.info(f"Transport animation for original symbol ID {original_symbol_id_for_this_task} aborted due to target change or clear.")
-                    # Clean up worm state without calling the main callback
-                    worm['mouth_state'] = 0 # Close mouth
-                    worm['speed_multiplier'] = worm.get('original_speed_before_push', 1.0) # Restore speed
-                    # Do not proceed to call symbol_transport_callback
+                if not current_worm_target or current_worm_target.get('id') != symbol_canvas_id:
+                    logging.info(f"Transport animation for original symbol canvas ID {symbol_canvas_id} aborted due to target change or clear.")
+                    worm['mouth_state'] = 0
+                    worm['speed_multiplier'] = worm.get('original_speed_before_push', 1.0)
+                    for key_to_clear in ['target_line_idx', 'target_char_idx', 'target_char_original']:
+                        if key_to_clear in worm:
+                            del worm[key_to_clear]
                     return
 
                 if current_step >= total_steps or not self.canvas.winfo_exists():
-                    # Animation complete - notify callback
                     if self.symbol_transport_callback:
-                        # Use the originally captured char and symbol_id for the callback
-                        self.symbol_transport_callback(original_symbol_id_for_this_task, original_char_for_this_task)
+                        self.symbol_transport_callback(
+                            original_line_idx_for_this_task,
+                            original_char_idx_for_this_task,
+                            original_char_for_this_task
+                        )
                     
-                    # Clean up worm state
-                    worm['transport_target'] = None # Crucial: Ensure target is cleared on completion
-                    
-                    # Remove from lists
-                    if symbol in self.solution_symbols:
-                        self.solution_symbols.remove(symbol)
-                    if symbol_id in self.transporting_symbols:
-                        del self.transporting_symbols[symbol_id]
-                    
-                    return
-                
-                # Calculate new position (linear for gentle push)
-                progress = current_step / total_steps
-                new_y = start_y + (end_y - start_y) * progress # Linear movement
-                
-                try:
-                    # Move the symbol
-                    self.canvas.coords(symbol_id, start_x, new_y)
-                    
-                    # Worm gently nudges the symbol from below
-                    # Worm tries to stay slightly below and aligned with the symbol
-                    worm_target_x = start_x
-                    worm_target_y = new_y + worm['segment_size'] * 1.5 # Position worm below symbol
-
-                    worm_dx = (worm_target_x - worm['x']) * 0.1 # Slower follow
-                    worm_dy = (worm_target_y - worm['y']) * 0.1 # Slower follow
-                    
-                    worm['x'] += worm_dx
-                    worm['y'] += worm_dy
-                    # Update worm's history to reflect this controlled movement
-                    worm['history'].insert(0, (worm['x'], worm['y']))
-                    worm['history'] = worm['history'][:self.worm_segments]
-                    # We might need to redraw the worm here if _update_worm isn't called frequently enough
-                    # during this specific animation loop. For now, assuming main loop handles it.
-                    
-                    # Next step
-                    current_step += 1
-                    self.canvas.after(75, animate_transport) # Slower frame rate for gentler push
-                except tk.TclError:
-                    # Symbol might have been deleted
                     worm['transport_target'] = None
                     worm['mouth_state'] = 0
-                    worm['speed_multiplier'] = worm.get('original_speed_before_push', 1.0) # Restore original speed
-                    return
+                    worm['speed_multiplier'] = worm.get('original_speed_before_push', 1.0)
+                    for key_to_clear in ['target_line_idx', 'target_char_idx', 'target_char_original']:
+                        if key_to_clear in worm:
+                            del worm[key_to_clear]
                     
-            # Start animation
+                    if symbol_canvas_id in self.transporting_symbols:
+                        del self.transporting_symbols[symbol_canvas_id]
+                    return
+                
+                progress = current_step / total_steps
+                new_y = start_y + (end_y - start_y) * progress
+                
+                try:
+                    self.canvas.coords(symbol_canvas_id, start_x, new_y)
+                    worm_target_x = start_x
+                    worm_target_y = new_y + worm['segment_size'] * 1.5
+                    worm_dx = (worm_target_x - worm['x']) * 0.1
+                    worm_dy = (worm_target_y - worm['y']) * 0.1
+                    worm['x'] += worm_dx
+                    worm['y'] += worm_dy
+                    worm['history'].insert(0, (worm['x'], worm['y']))
+                    worm['history'] = worm['history'][:self.worm_segments]
+                    current_step += 1
+                    self.canvas.after(75, animate_transport)
+                except tk.TclError:
+                    worm['transport_target'] = None
+                    worm['mouth_state'] = 0
+                    worm['speed_multiplier'] = worm.get('original_speed_before_push', 1.0)
+                    for key_to_clear in ['target_line_idx', 'target_char_idx', 'target_char_original']:
+                        if key_to_clear in worm:
+                            del worm[key_to_clear]
+                    return
             animate_transport()
-            
         except Exception as e:
             logging.error(f"Error during transport animation: {e}")
             worm['transport_target'] = None
             worm['mouth_state'] = 0
-            # Ensure speed is restored in case of error
-            if 'original_worm_speed' in locals():
-                 worm['speed_multiplier'] = original_worm_speed
+            if 'original_speed_before_push' in worm:
+                 worm['speed_multiplier'] = worm['original_speed_before_push']
+            for key_to_clear in ['target_line_idx', 'target_char_idx', 'target_char_original']:
+                if key_to_clear in worm:
+                    del worm[key_to_clear]
     
     def set_symbol_transport_callback(self, callback):
-        """Set callback function for when a symbol is transported to Window C"""
+        """Set callback function for when a symbol is transported to Window C.
+        Callback should accept (line_idx, char_idx, char).
+        """
         self.symbol_transport_callback = callback
         
     def set_symbol_targeted_for_steal_callback(self, callback):
@@ -1258,8 +1262,11 @@ class WormAnimation:
             # 1. Delete the canvas item of the symbol the worm was actively pushing.
             #    The targeted_symbol_canvas_id is the ID of this item on solution_canvas.
             try:
-                self.canvas.delete(targeted_symbol_canvas_id)
-                logging.info(f"Successfully deleted canvas item {targeted_symbol_canvas_id} (symbol pushed by worm).")
+                if self.canvas.winfo_exists() and targeted_symbol_canvas_id in self.canvas.find_all():
+                    self.canvas.delete(targeted_symbol_canvas_id)
+                    logging.info(f"Successfully deleted canvas item {targeted_symbol_canvas_id} (symbol pushed by worm).")
+                else:
+                    logging.info(f"Canvas item {targeted_symbol_canvas_id} already gone or canvas destroyed, no deletion needed.")
             except tk.TclError as e:
                 logging.warning(f"TclError deleting canvas item {targeted_symbol_canvas_id} during intervention: {e}")
             except Exception as e:
@@ -1342,8 +1349,8 @@ if __name__ == "__main__":
     canvas.pack(fill=tk.BOTH, expand=True)
     
     # Test callback for symbol transport
-    def on_symbol_transported(symbol_id, char):
-        print(f"Symbol '{char}' (ID: {symbol_id}) transported to Window C!")
+    def on_symbol_transported(line_idx, char_idx, char):
+        print(f"Symbol '{char}' (line: {line_idx}, char: {char_idx}) transported to Window C!")
         
         # Recreate the symbol at the bottom of the screen (simulating reapplication)
         new_x = random.randint(100, 500)

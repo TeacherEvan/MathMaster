@@ -12,6 +12,7 @@ from src.visual_components.welcome_screen import (
     MathSymbols,
     ProgressBar
 )
+from math_master_logo_art import draw_algebra_logo # Added import for the logo
 
 # Set up logging
 logging.basicConfig(
@@ -187,117 +188,203 @@ class WelcomeScreen(tk.Tk):
         # Double the title size by multiplying by 2
         title_font_size = title_font_size * 2
         
-        # Create title with glowing effect and black outline
+        # Create title with glowing effect
         for i in range(3, 0, -1):  # Create layers for glow effect
             glow_alpha = 0.3 * i / 3
             glow_color = self._get_hex_with_alpha("#00FF00", glow_alpha)
             self.canvas.create_text(
-                width // 2, height // 4 - 30,  # Moved up slightly
+                width // 2, (height // 4) - title_font_size * 0.1,  # Only MATH MASTER moved 10% higher
                 text="MATH MASTER",
                 font=("Courier New", title_font_size, "bold"),
                 fill=glow_color,
                 tags="title_glow"
             )
+
+        # --- Enhanced 3D/Shading Effect for MATH MASTER ---
+        title_x = width // 2
+        title_y = (height // 4) - title_font_size * 0.1
         
-        # Main title text with black outline for depth
+        # 1. Darker shadow layer (further offset)
+        shadow_offset_x_deep = 3
+        shadow_offset_y_deep = 3
+        dark_green_shadow = "#004400" # Very dark green
+        self.canvas.create_text(
+            title_x + shadow_offset_x_deep,
+            title_y + shadow_offset_y_deep,
+            text="MATH MASTER",
+            font=("Courier New", title_font_size, "bold"),
+            fill=dark_green_shadow,
+            tags="title_deep_shadow"
+        )
+
+        # 2. Mid-tone shadow layer (less offset)
+        shadow_offset_x_mid = 1
+        shadow_offset_y_mid = 1
+        mid_green_shadow = "#006600" # Medium dark green
+        self.canvas.create_text(
+            title_x + shadow_offset_x_mid,
+            title_y + shadow_offset_y_mid,
+            text="MATH MASTER",
+            font=("Courier New", title_font_size, "bold"),
+            fill=mid_green_shadow,
+            tags="title_mid_shadow"
+        )
+        # --- End of Enhanced 3D/Shading Effect ---
+        
+        # Main title text with black outline for depth (drawn around the original position)
         for offset in [(1, 1), (-1, 1), (1, -1), (-1, -1)]:
             self.canvas.create_text(
-                width // 2 + offset[0], height // 4 - 30 + offset[1],
+                title_x + offset[0], title_y + offset[1],  # Use title_x, title_y
                 text="MATH MASTER",
                 font=("Courier New", title_font_size, "bold"),
                 fill="#000000",  # Black outline
                 tags="title_outline"
             )
         
-        # Main title text
+        # Main title text (top layer)
         self.canvas.create_text(
-            width // 2, height // 4 - 30,
+            title_x, title_y,  # Use title_x, title_y
             text="MATH MASTER",
             font=("Courier New", title_font_size, "bold"),
             fill="#00FF00",  # Matrix green
             tags="title"
         )
         
-        # Draw "Algebra" text below with pulsating effect
+        # Draw "Algebra" text below with pulsating effect - REVERTED TO ORIGINAL POSITION
         algebra_font_size = int(title_font_size * 0.7)  # 70% of title size
         pulse_intensity = 0.5 * (math.sin(self.algebra_pulse_phase) + 1) / 2  # Increased range to 0 to 0.5
         algebra_alpha = 0.3 + pulse_intensity  # Base 30% opacity + pulsating effect (more transparent)
         
-        # Create gold glow effect behind Algebra text
+        # Create gold glow effect behind Algebra text - BACK TO ORIGINAL POSITION
         for i in range(5, 0, -1):  # Increased layers for more pronounced glow
             glow_alpha = (algebra_alpha * 0.4) * i / 5  # Reduced base alpha for gold glow
             glow_color = self._get_hex_with_alpha("#FFD700", glow_alpha)  # Gold color
             self.canvas.create_text(
-                width // 2, height // 4 + 30,
+                width // 2, height // 4 + 30,  # REVERTED - no additional_offset
                 text="Algebra",
                 font=("Courier New", algebra_font_size + (i * 2), "bold"),  # Increasing size for each layer
                 fill=glow_color,
                 tags="algebra_gold_glow"
             )
         
-        # Black outline for Algebra text
+        # Black outline for Algebra text - BACK TO ORIGINAL POSITION
         for offset in [(1, 1), (-1, 1), (1, -1), (-1, -1)]:
             self.canvas.create_text(
-                width // 2 + offset[0], height // 4 + 30 + offset[1],
+                width // 2 + offset[0], height // 4 + 30 + offset[1],  # REVERTED - no additional_offset
                 text="Algebra",
                 font=("Courier New", algebra_font_size, "bold"),
                 fill="#000000",  # Black outline
                 tags="algebra_outline"
             )
         
-        # Main Algebra text
+        # Main Algebra text - BACK TO ORIGINAL POSITION
         self.canvas.create_text(
-            width // 2, height // 4 + 30,  # Positioned below MATH MASTER
+            width // 2, height // 4 + 30,  # REVERTED - no additional_offset
             text="Algebra",
             font=("Courier New", algebra_font_size, "bold"),
             fill=self._get_hex_with_alpha("#00FF00", algebra_alpha),
             tags="algebra"
         )
         
-        # Add creator credit below Algebra
+        # --- START INSERTED CODE FOR ALGEBRA LOGO ---
+        # Calculate properties for Algebra text bottom
+        # algebra_y_center is height // 4 + 30
+        # algebra_font_size is already defined from title_font_size calculation
+        algebra_text_visual_height_for_logo = algebra_font_size # Approximation for single-line text height
+        algebra_bbox_bottom_for_logo = (height // 4 + 30) + (algebra_text_visual_height_for_logo / 2)
+
+        # Calculate properties for Stoic Quote top (mirroring later calculations for accurate spacing)
+        # Quote font size calculation (mirrors lines 300-303 of original file structure)
+        _original_calc_size_quote_logo = max(10, min(width // 60, 16))
+        _current_q_font_size_logo = int(_original_calc_size_quote_logo * 0.9)
+        _actual_q_font_size_logo = int(_current_q_font_size_logo * 1.1) # This is the quote_font_size
+
+        _quote_width_for_logo_calc = width * 0.8
+        if _quote_width_for_logo_calc <= 0: _quote_width_for_logo_calc = 1 # Avoid division by zero
+
+        _main_quote_text_for_logo_calc = self.stoic_quote
+        if " - " in self.stoic_quote:
+            _main_quote_text_for_logo_calc = self.stoic_quote.rsplit(" - ", 1)[0]
+
+        _main_quote_y_for_logo_calc = height // 2 + 20 # Center Y of the quote block
+
+        # Estimate height of main quote text (mirrors lines 329-331 of original file structure)
+        if _actual_q_font_size_logo > 0: # Ensure font size is positive
+            # Ensure _quote_width_for_logo_calc is not zero before division
+            if _quote_width_for_logo_calc == 0: _quote_width_for_logo_calc = 1 
+            _main_quote_num_lines_for_logo = (len(_main_quote_text_for_logo_calc) * _actual_q_font_size_logo * 0.6) / _quote_width_for_logo_calc
+            if _main_quote_num_lines_for_logo == 0: _main_quote_num_lines_for_logo = 1 # Avoid issues with zero height for very short quotes
+            _main_quote_estimated_height_for_logo = _main_quote_num_lines_for_logo * _actual_q_font_size_logo * 1.2
+        else: # Fallback if font size calculation led to zero or negative
+            _main_quote_estimated_height_for_logo = 0.0 # Set to 0 if font size is not positive
+
+        _main_quote_bbox_top_for_logo = _main_quote_y_for_logo_calc - (_main_quote_estimated_height_for_logo / 2)
+
+        available_vertical_space_for_logo = _main_quote_bbox_top_for_logo - algebra_bbox_bottom_for_logo
+        
+        MIN_LOGO_TARGET_PIXEL_HEIGHT = 30.0 # Minimum target height for the logo to be drawn
+
+        if available_vertical_space_for_logo * 0.82 >= MIN_LOGO_TARGET_PIXEL_HEIGHT:
+            logo_target_pixel_height = available_vertical_space_for_logo * 0.82
+            
+            LOGO_HEIGHT_TO_BASE_SIZE_RATIO = 1.5578 
+            if LOGO_HEIGHT_TO_BASE_SIZE_RATIO <= 0: 
+                LOGO_HEIGHT_TO_BASE_SIZE_RATIO = 1.0 # Prevent division by zero/negative
+
+            logo_base_size = logo_target_pixel_height / LOGO_HEIGHT_TO_BASE_SIZE_RATIO
+            
+            MIN_LOGO_BASE_SIZE = 10.0 
+            if logo_base_size >= MIN_LOGO_BASE_SIZE :
+                logo_center_x = width // 2
+                logo_center_y = algebra_bbox_bottom_for_logo + (available_vertical_space_for_logo / 2)
+                
+                # Assuming draw_algebra_logo is imported (e.g., from math_master_logo_art import draw_algebra_logo)
+                draw_algebra_logo(
+                    self.canvas,
+                    logo_center_x,
+                    logo_center_y,
+                    logo_base_size,
+                    self._get_hex_with_alpha
+                )
+        # --- END INSERTED CODE FOR ALGEBRA LOGO ---
+
+        # Add creator credit below Algebra - POSITIONED AT BOTTOM CENTER
         original_font_size = max(12, min(width // 40, 20))
         credit_font_size = original_font_size // 2  # Exactly 50% of original size
         self.canvas.create_text(
-            width // 2, height // 4 + 80,  # Moved down to accommodate Algebra text
+            width // 2, height - credit_font_size - 20,  # Centered horizontally, near bottom
             text="Created By Teacher Evan (Ewaldt Botha)",
             font=("Helvetica", credit_font_size, "bold italic"),
             fill=self._get_hex_with_alpha("#88FF88", 0.5),  # 50% transparent
             tags="creator_credit"
         )
-        
+
         # Draw stoic quote in the center (moved down slightly)
-        quote_font_size = max(14, min(width // 35, 24))
-        quote_font_size = int(quote_font_size * 0.9)  # 10% smaller as requested
-        quote_font_size = quote_font_size * 2
+        # Original: quote_font_size = max(10, min(width // 60, 16))
+        # Current (reduced by 10%): original_calculated_size = max(10, min(width // 60, 16)); quote_font_size = int(original_calculated_size * 0.9)
+        # New (10% bigger than current):
+        original_calculated_size = max(10, min(width // 60, 16))
+        current_quote_font_size = int(original_calculated_size * 0.9) # This is the base for the 10% increase
+        quote_font_size = int(current_quote_font_size * 1.1) # Increased by 10%
+
         quote_width = width * 0.8  # Use 80% of the width for the quote
-        
-        # Create cloudy shadow effect behind the quote (replacing red glow)
-        for i in range(5, 0, -1):
-            # Use dark gray to black colors for cloudy shadow
-            shadow_alpha = 0.15 * i / 5  
-            shadow_offset = i * 2  # Increasing offset for each layer
-            shadow_color = self._get_hex_with_alpha("#333333", shadow_alpha)
-            
-            # Create multiple offset shadows for cloudy effect
-            for offset_x, offset_y in [(shadow_offset, shadow_offset), 
-                                       (-shadow_offset, shadow_offset),
-                                       (shadow_offset, -shadow_offset),
-                                       (-shadow_offset, -shadow_offset)]:
-                self.canvas.create_text(
-                    width // 2 + offset_x, height // 2 + 20 + offset_y,
-                    text=self.stoic_quote,
-                    font=("Helvetica", quote_font_size, "italic"),
-                    fill=shadow_color,
-                    width=quote_width,
-                    justify=tk.CENTER,
-                    tags="quote_shadow"
-                )
-        
-        # Black outline for quote text for better definition
+
+        # Split quote into main part and author
+        main_quote_text = self.stoic_quote
+        author_text = ""
+        if " - " in self.stoic_quote:
+            parts = self.stoic_quote.rsplit(" - ", 1)
+            main_quote_text = parts[0]
+            author_text = " - " + parts[1]
+
+        # Calculate vertical position for the main quote
+        main_quote_y = height // 2 + 20
+
+        # Black outline for main quote text for better definition
         for offset in [(1, 1), (-1, 1), (1, -1), (-1, -1), (0, 2), (2, 0), (-2, 0), (0, -2)]:
             self.canvas.create_text(
-                width // 2 + offset[0], height // 2 + 20 + offset[1],
-                text=self.stoic_quote,
+                width // 2 + offset[0], main_quote_y + offset[1], # Use main_quote_y
+                text=main_quote_text, # Use main_quote_text
                 font=("Helvetica", quote_font_size, "italic"),
                 fill="#000000",
                 width=quote_width,
@@ -305,19 +392,58 @@ class WelcomeScreen(tk.Tk):
                 tags="quote_outline"
             )
         
-        # Create the quote text 
-        quote_id = self.canvas.create_text(
-            width // 2, height // 2 + 20,
-            text=self.stoic_quote,
+        # Create the main quote text 
+        main_quote_id = self.canvas.create_text(
+            width // 2, main_quote_y, # Use main_quote_y
+            text=main_quote_text, # Use main_quote_text
             font=("Helvetica", quote_font_size, "italic"),
             fill=self._get_hex_with_alpha("#FFD700", 0.35),  # Gold with 65% transparency
             width=quote_width,
             justify=tk.CENTER,
             tags="stoic_quote"
         )
+
+        # Draw Author Text if available
+        if author_text:
+            author_font_size = int(quote_font_size * 1.2) # 20% larger than the main quote's font size
+            
+            # Estimate height of main quote text to position author below it
+            # This is an approximation. A more precise way would be to use canvas.bbox(main_quote_id)
+            # but that requires the item to be drawn and might cause a flicker if updated.
+            # For simplicity, we'll use font size as a proxy.
+            main_quote_num_lines = (len(main_quote_text) * quote_font_size * 0.6) / quote_width # Approximate lines
+            main_quote_estimated_height = main_quote_num_lines * quote_font_size * 1.2 # Approx height with line spacing
+            
+            author_y = main_quote_y + (main_quote_estimated_height / 2) + (author_font_size / 2) + 10 # Add some padding
+
+            # Black outline for author text
+            for offset in [(1, 1), (-1, 1), (1, -1), (-1, -1), (0, 2), (2, 0), (-2, 0), (0, -2)]:
+                self.canvas.create_text(
+                    width // 2 + offset[0], author_y + offset[1],
+                    text=author_text,
+                    font=("Helvetica", author_font_size, "italic"),
+                    fill="#000000",
+                    width=quote_width,
+                    justify=tk.CENTER,
+                    tags="author_outline"
+                )
+
+            # Create the author text
+            self.canvas.create_text(
+                width // 2, author_y,
+                text=author_text,
+                font=("Helvetica", author_font_size, "italic"),
+                fill=self._get_hex_with_alpha("#FFD700", 0.35),  # Same color as quote
+                width=quote_width, # Use same width constraint
+                justify=tk.CENTER, # Center author
+                tags="stoic_author"
+            )
         
         # Add "Click to continue" text below the quote
-        instruction_font_size = max(10, min(width // 60, 16))
+        # Original: instruction_font_size = max(10, min(width // 60, 16))
+        # Reduced by 10%:
+        original_calculated_size = max(10, min(width // 60, 16))
+        instruction_font_size = int(original_calculated_size * 0.9)
         
         # Add black outline to instruction text
         for offset in [(1, 1), (-1, 1), (1, -1), (-1, -1)]:

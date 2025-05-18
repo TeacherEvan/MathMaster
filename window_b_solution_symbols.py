@@ -8,8 +8,6 @@ class SolutionSymbolDisplay:
         self.canvas = canvas
         self.gameplay_screen = gameplay_screen_ref # Reference to access things like debug_mode
         self.drawing_complete_callback = drawing_complete_callback # Store the callback
-        self.current_solution_steps = []
-        self.visible_chars = set() # Set of (line_idx, char_idx)
 
         # Visual parameters - can be adjusted
         self.base_font_size = 22 # Original font size
@@ -54,9 +52,11 @@ class SolutionSymbolDisplay:
         return f"#{r:02x}{g:02x}{b:02x}"
 
     def update_data(self, solution_steps, visible_chars):
-        """Update the data to be displayed."""
-        self.current_solution_steps_cache = solution_steps
-        self.visible_chars_cache = set(visible_chars) # Ensure it's a copy and a set
+        """Update the data to be displayed.
+        Now relies on gameplay_screen.solution_char_details as the source of truth.
+        solution_steps and visible_chars are passed for context but drawing decisions
+        are primarily based on gameplay_screen.solution_char_details.
+        """
         self.draw_symbols()
 
     def get_canvas_dimensions(self):
@@ -95,90 +95,114 @@ class SolutionSymbolDisplay:
         """Draw the solution lines on the solution canvas with new visual requirements."""
         self.clear_all_visuals() # Clear old symbols first
         
-        if not self.current_solution_steps_cache or not self.canvas.winfo_exists():
+        # Use solution_char_details from gameplay_screen directly
+        solution_details_list = self.gameplay_screen.solution_char_details
+        
+        if not solution_details_list or not self.canvas.winfo_exists():
             if hasattr(self, 'drawing_complete_callback') and callable(self.drawing_complete_callback):
-                self.drawing_complete_callback() # Call even if nothing to draw or canvas gone
+                self.drawing_complete_callback()
             return
 
         canvas_width, canvas_height = self.get_canvas_dimensions()
         
-        # Check if canvas dimensions are valid before proceeding
         if canvas_width is None or canvas_height is None:
-            # logging.warning("Canvas dimensions not available yet. Skipping symbol drawing.") # Kept for now
-            # Schedule another attempt after a short delay
             if self.canvas.winfo_exists():
                 self.canvas.after(100, self.draw_symbols)
-            # No callback here, as drawing is not complete/attempted.
             return
 
-        # Dynamically adjust font size based on canvas height and number of lines
-        num_lines = len(self.current_solution_steps_cache)
-        if num_lines == 0:
+        # Determine number of lines from the details list by finding unique line_idx
+        if not solution_details_list: # Should be caught by earlier check, but good for safety
             if hasattr(self, 'drawing_complete_callback') and callable(self.drawing_complete_callback):
                 self.drawing_complete_callback() # Call if no lines to draw
             return
 
+        line_indices = sorted(list(set(d['line_idx'] for d in solution_details_list if d)))
+        num_lines = len(line_indices)
+        if num_lines == 0:
+            if hasattr(self, 'drawing_complete_callback') and callable(self.drawing_complete_callback):
+                self.drawing_complete_callback()
+            return
+
         max_line_len = 0
-        for line_str in self.current_solution_steps_cache:
-            if len(line_str) > max_line_len:
-                max_line_len = len(line_str)
-        if max_line_len == 0: max_line_len = 1 # Avoid division by zero if all lines are empty
+        # Calculate max_line_len based on characters per line from solution_details_list
+        chars_per_line = {}
+        for detail in solution_details_list:
+            if detail:
+                chars_per_line[detail['line_idx']] = chars_per_line.get(detail['line_idx'], 0) + 1
+        if chars_per_line: # Check if chars_per_line is not empty
+             max_line_len = max(chars_per_line.values()) if chars_per_line else 1 # Max chars in any single line
+        else: # Fallback if no character details are present (e.g., empty problem)
+            max_line_len = 1
 
-        # Adjust font size based on available height
+        if max_line_len == 0: max_line_len = 1
+
         available_height_for_font = canvas_height / num_lines
-        dynamic_font_size_h = int(available_height_for_font / self.line_height_multiplier * 0.8) # 0.8 for padding
+        dynamic_font_size_h = int(available_height_for_font / self.line_height_multiplier * 0.8)
 
-        # Adjust font size based on available width
         estimated_char_width_at_dynamic_font_size = max_line_len * (dynamic_font_size_h * 0.6)
         
-        if estimated_char_width_at_dynamic_font_size > canvas_width * 0.9 and max_line_len > 0: # 0.9 for padding
+        if estimated_char_width_at_dynamic_font_size > canvas_width * 0.9 and max_line_len > 0:
             dynamic_font_size_w = int((canvas_width * 0.9) / (max_line_len * 0.6))
         else:
             dynamic_font_size_w = dynamic_font_size_h
 
-        self.font_size = max(10, min(dynamic_font_size_h, dynamic_font_size_w, 35)) # Min 10, Max 35
+        self.font_size = max(10, min(dynamic_font_size_h, dynamic_font_size_w, 35))
         self.font = (self.font_family, self.font_size, "bold")
-        self._calculate_char_width() # Recalculate char_width with the new font size
+        self._calculate_char_width()
 
         line_spacing = self.font_size * self.line_height_multiplier
         total_text_height = num_lines * line_spacing
-        start_y = (canvas_height - total_text_height) / 2 + line_spacing / 2 # Centered vertically
+        start_y = (canvas_height - total_text_height) / 2 + line_spacing / 2
 
-        shadow_offset_x = int(self.font_size * 0.05)  # 5% of font size
+        shadow_offset_x = int(self.font_size * 0.05)
         shadow_offset_y = int(self.font_size * 0.05)
 
-        # First pre-calculate positions for ALL characters (visible and invisible)
-        # so we can consistently position them when they become visible
         self.character_positions = {}
         
-        for line_idx, line_str in enumerate(self.current_solution_steps_cache):
-            total_line_width = len(line_str) * self.char_width
-            current_x = (canvas_width - total_line_width) / 2
-            current_y = start_y + (line_idx * line_spacing) - (self.font_size /2) # Adjust for char center
+        # Group details by line
+        lines_data = {}
+        for detail in solution_details_list:
+            if detail: # Ensure detail is not None
+                if detail['line_idx'] not in lines_data:
+                    lines_data[detail['line_idx']] = []
+                lines_data[detail['line_idx']].append(detail)
 
-            for char_idx, char in enumerate(line_str):
-                # Store position for this character
-                text_center_x = current_x + self.char_width / 2
-                text_center_y = current_y + self.font_size / 2
-                self.character_positions[(line_idx, char_idx)] = (text_center_x, text_center_y)                
-                current_x += self.char_width  # Move to next character position
+        for line_idx in line_indices: # Iterate through sorted unique line indices
+            line_details = lines_data.get(line_idx, [])
+            if not line_details: continue
+
+            # Sort characters within the line by char_idx to ensure correct order
+            line_details.sort(key=lambda d: d['char_idx'])
+            
+            # Calculate total width for this specific line
+            current_line_width = sum(self.char_width for d in line_details if d and not d.get('is_placeholder', False)) # only count non-placeholders for width
+
+            current_x = (canvas_width - current_line_width) / 2
+            current_y = start_y + (line_idx * line_spacing) - (self.font_size / 2)
+
+            for detail_idx, detail in enumerate(line_details):
+                if not detail: continue # Skip if detail is None
+                char_center_x = current_x + self.char_width / 2
+                char_center_y = current_y + self.font_size / 2
+                self.character_positions[(detail['line_idx'], detail['char_idx'])] = (char_center_x, char_center_y)
+                
+                if not detail.get('is_placeholder', False): # Only advance x for actual characters
+                     current_x += self.char_width
         
-        # Now create ONLY the visible characters
-        for line_idx, line_str in enumerate(self.current_solution_steps_cache):
-            for char_idx, char in enumerate(line_str):
-                # Only create canvas items for visible characters
-                if (line_idx, char_idx) in self.visible_chars_cache:
-                    self._create_character(line_idx, char_idx, char)
+        drawn_symbols_count = 0
+        for detail in solution_details_list:
+            if detail and detail.get('is_visible_on_b') and not detail.get('transported_to_c') and not detail.get('is_placeholder'):
+                self._create_character(detail['line_idx'], detail['char_idx'], detail['char'])
+                drawn_symbols_count +=1
         
         if self.gameplay_screen.debug_mode:
-            logging.info(f"SolutionSymbolDisplay: Drew {len(self.visible_chars_cache)} visible symbols. Font size: {self.font_size}. Char width: {self.char_width}.")
+            logging.info(f"SolutionSymbolDisplay: Drew {drawn_symbols_count} visible symbols. Font size: {self.font_size}. Char width: {self.char_width}.")
 
-        # All drawing operations are complete, call the callback
         if hasattr(self, 'drawing_complete_callback') and callable(self.drawing_complete_callback):
             self.drawing_complete_callback()
 
     def _create_character(self, line_idx, char_idx, char):
-        """Create a visible character (text and shadow) on the canvas."""
+        """Create a visible character (text and shadow) on the canvas and update GameplayScreen's solution_char_details."""
         if (line_idx, char_idx) not in self.character_positions:
             logging.warning(f"No position info for character at {line_idx}, {char_idx}")
             return
@@ -190,84 +214,128 @@ class SolutionSymbolDisplay:
         text_tag = f"ssd_{line_idx}_{char_idx}_text"
         shadow_tag = f"ssd_{line_idx}_{char_idx}_shadow"
         
-        # Create shadow
         shadow_id = self.canvas.create_text(
             text_center_x + shadow_offset_x,
             text_center_y + shadow_offset_y,
             text=char, font=self.font, fill=self.shadow_color,
             anchor=tk.CENTER, tags=(shadow_tag, "solution_text_ssd")
         )
-        self.drawn_symbol_items[(line_idx, char_idx, 'shadow')] = shadow_id
         
-        # Create main text
         text_id = self.canvas.create_text(
             text_center_x, text_center_y,
             text=char, font=self.font, fill=self.text_color,
             anchor=tk.CENTER, tags=(text_tag, "solution_text_ssd")
         )
-        self.drawn_symbol_items[(line_idx, char_idx, 'text')] = text_id
 
-    def _update_symbol_appearance(self, line_idx, char_idx):
-        """Updates a symbol's appearance based on visibility."""
-        is_visible = (line_idx, char_idx) in self.visible_chars_cache
-        
-        if is_visible:
-            # Check if we need to create the symbol
-            if (line_idx, char_idx, 'text') not in self.drawn_symbol_items:
-                # Character is now visible but not created yet - get its character
-                if line_idx < len(self.current_solution_steps_cache):
-                    line = self.current_solution_steps_cache[line_idx]
-                    if char_idx < len(line):
-                        self._create_character(line_idx, char_idx, line[char_idx])
-        else:
-            # If not visible, but exists on canvas, remove it
-            self._remove_character(line_idx, char_idx)
+        # Store in local cache for quick access (e.g., by get_symbol_coordinates)
+        self.drawn_symbol_items[(line_idx, char_idx, 'text')] = text_id
+        self.drawn_symbol_items[(line_idx, char_idx, 'shadow')] = shadow_id
+
+        # Update the canonical list in GameplayScreen
+        for detail in self.gameplay_screen.solution_char_details:
+            if detail and detail['line_idx'] == line_idx and detail['char_idx'] == char_idx:
+                detail['canvas_id'] = text_id # Store the main text_id
+                detail['is_visible_on_b'] = True # Mark as drawn/visible
+                # Ensure 'shadow_canvas_id' is also stored if needed elsewhere, or handle shadow deletion via tags
+                break
     
-    def _remove_character(self, line_idx, char_idx):
-        """Remove a character from the canvas."""
-        for part in ['text', 'shadow']:
-            item_id = self.drawn_symbol_items.pop((line_idx, char_idx, part), None)
-            if item_id:
-                try:
+    def _update_symbol_appearance(self, line_idx, char_idx):
+        """Updates a symbol's appearance based on visibility flags in GameplayScreen.solution_char_details."""
+        # Find the detail in GameplayScreen's list
+        char_detail = None
+        for detail in self.gameplay_screen.solution_char_details:
+            if detail and detail['line_idx'] == line_idx and detail['char_idx'] == char_idx:
+                char_detail = detail
+                break
+        
+        if not char_detail:
+            return
+
+        is_visible_in_gs = char_detail.get('is_visible_on_b', False)
+        is_transported_in_gs = char_detail.get('transported_to_c', False)
+        is_placeholder_in_gs = char_detail.get('is_placeholder', False)
+        
+        # Determine if the symbol *should* be drawn on canvas B
+        should_be_drawn_on_b = is_visible_in_gs and not is_transported_in_gs and not is_placeholder_in_gs
+
+        # Check if it *is* currently drawn (by checking its canvas_id in the detail itself)
+        is_currently_drawn_on_b = char_detail.get('canvas_id') is not None
+
+        if should_be_drawn_on_b:
+            if not is_currently_drawn_on_b:
+                self._create_character(line_idx, char_idx, char_detail['char'])
+            # If it should be drawn and is drawn, color/appearance is handled by _create_character or flash/pulse
+        else: # Should NOT be drawn
+            if is_currently_drawn_on_b:
+                self._remove_character_from_canvas_and_gs_details(line_idx, char_idx)
+    
+    def _remove_character_from_canvas_and_gs_details(self, line_idx, char_idx):
+        """Remove a character from the canvas AND update its state in GameplayScreen.solution_char_details."""
+        char_detail_to_update = None
+        for detail_in_list in self.gameplay_screen.solution_char_details:
+            if detail_in_list and detail_in_list['line_idx'] == line_idx and detail_in_list['char_idx'] == char_idx:
+                char_detail_to_update = detail_in_list
+                break
+
+        if char_detail_to_update and char_detail_to_update.get('canvas_id') is not None:
+            text_id_to_delete = char_detail_to_update['canvas_id']
+            # Construct shadow tag based on text tag or find shadow_id if stored
+            shadow_tag_to_delete = f"ssd_{line_idx}_{char_idx}_shadow" # Assuming tag structure
+
+            try:
+                if text_id_to_delete: # Check if text_id_to_delete is not None
+                    self.canvas.delete(text_id_to_delete)
+                # Delete shadow by tag; more robust if shadow_id wasn't stored separately in detail
+                shadow_items = self.canvas.find_withtag(shadow_tag_to_delete)
+                for item_id in shadow_items:
                     self.canvas.delete(item_id)
-                except tk.TclError:
-                    pass  # Item might already be gone
+
+            except tk.TclError:
+                pass # Item might already be gone
+            finally:
+                # Update GameplayScreen's list
+                char_detail_to_update['canvas_id'] = None
+                char_detail_to_update['is_visible_on_b'] = False # Explicitly mark as not visible on B
+                # transported_to_c flag is managed by GameplayScreen directly when transport occurs
 
     def reveal_symbol(self, line_idx, char_idx, color=None):
-        """Reveals a symbol by creating it if it doesn't exist."""
-        # Only create the symbol if it doesn't exist yet
-        if (line_idx, char_idx, 'text') not in self.drawn_symbol_items:
-            if line_idx < len(self.current_solution_steps_cache):
-                line = self.current_solution_steps_cache[line_idx]
-                if char_idx < len(line):
-                    self._create_character(line_idx, char_idx, line[char_idx])
-            else:
-                logging.warning(f"Cannot reveal symbol at ({line_idx},{char_idx}): line_idx out of bounds")
+        """Ensures a symbol is created on canvas if it should be visible, and updates GameplayScreen's details."""
+        # Find the detail in GameplayScreen's list to get the character and update flags
+        char_detail_to_reveal = None
+        for detail in self.gameplay_screen.solution_char_details:
+            if detail and detail['line_idx'] == line_idx and detail['char_idx'] == char_idx:
+                char_detail_to_reveal = detail
+                break
         
-        # If color specified, change the color of the created symbol
-        if color and (line_idx, char_idx, 'text') in self.drawn_symbol_items:
-            text_id = self.drawn_symbol_items[(line_idx, char_idx, 'text')]
-            shadow_id = self.drawn_symbol_items.get((line_idx, char_idx, 'shadow'))
-            
-            shadow_color = self._calculate_shadow_color(color, -0.4)
-            
-            try:
-                self.canvas.itemconfig(text_id, fill=color)
-                if shadow_id:
-                    self.canvas.itemconfig(shadow_id, fill=shadow_color)
-            except tk.TclError as e:
-                logging.warning(f"TclError setting color of symbol ({line_idx},{char_idx}): {e}")
+        if not char_detail_to_reveal:
+            logging.warning(f"Cannot reveal symbol at ({line_idx},{char_idx}): details not found in GameplayScreen list.")
+            return
+
+        # If it's a placeholder (space), do nothing visually here
+        if char_detail_to_reveal.get('is_placeholder'):
+            # GameplayScreen.reveal_char handles visibility flags, SSD doesn't draw placeholders
+            return
+
+        # Mark as visible in GameplayScreen's canonical list (this might be redundant if GS.reveal_char already does it)
+        # However, this method is often called by GS.reveal_char, so ensuring it's set here is fine.
+        char_detail_to_reveal['is_visible_on_b'] = True
+        char_detail_to_reveal['transported_to_c'] = False # Ensure it's not marked as transported if being revealed
+
+        # Create the character on canvas if it's not already there (canvas_id is None)
+        if char_detail_to_reveal.get('canvas_id') is None:
+            self._create_character(line_idx, char_idx, char_detail_to_reveal['char'])
+        
+        # Color change is handled by flash_symbol_color, not directly here for reveal.
+        # If a specific 'color' was passed, it's likely from an old call pattern.
+        # Modern flashing for reveal is handled by GameplayScreen calling flash_symbol_color.
 
     def flash_symbol_color(self, line_idx, char_idx, flash_color, duration_ms, original_color=None):
         """Flashes a symbol's color temporarily."""
-        # If the symbol doesn't exist (not visible), we'll create it for the flash duration
-        # and then remove it afterward
-        
-        # Check if symbol exists
         was_created_for_flash = False
+        # Use gameplay_screen.current_solution_steps for bounds checking
         if (line_idx, char_idx, 'text') not in self.drawn_symbol_items:
-            if line_idx < len(self.current_solution_steps_cache):
-                line = self.current_solution_steps_cache[line_idx]
+            if line_idx < len(self.gameplay_screen.current_solution_steps):
+                line = self.gameplay_screen.current_solution_steps[line_idx]
                 if char_idx < len(line):
                     self._create_character(line_idx, char_idx, line[char_idx])
                     was_created_for_flash = True
@@ -306,10 +374,11 @@ class SolutionSymbolDisplay:
                 if not self.canvas.winfo_exists():
                     return
                 
-                # Should this symbol stay visible after flash? 
-                should_stay_visible = (line_idx, char_idx) in self.visible_chars_cache
+                # Check visibility based on gameplay_screen.solution_char_details
+                detail_to_check = next((d for d in self.gameplay_screen.solution_char_details if d['line_idx'] == line_idx and d['char_idx'] == char_idx), None)
+                should_stay_visible_gs = detail_to_check.get('is_visible_on_b', False) if detail_to_check else False
                 
-                if should_stay_visible:
+                if should_stay_visible_gs:
                     # Just reset to standard red color
                     final_color = original_color if original_color else self.text_color
                     final_shadow = self._calculate_shadow_color(final_color, -0.4)
@@ -339,14 +408,11 @@ class SolutionSymbolDisplay:
 
     def start_pulsation(self, line_idx, char_idx, pulse_color="#FFFF00", base_color=None, duration=1000, pulses=3):
         """Starts a pulsation effect on a symbol."""
-        # If the symbol doesn't exist (not visible), we'll create it for pulsation
-        # and then remove it afterward if it's still not visible
-        
-        # Check if symbol exists
         was_created_for_pulse = False
+        # Use gameplay_screen.current_solution_steps for bounds checking
         if (line_idx, char_idx, 'text') not in self.drawn_symbol_items:
-            if line_idx < len(self.current_solution_steps_cache):
-                line = self.current_solution_steps_cache[line_idx]
+            if line_idx < len(self.gameplay_screen.current_solution_steps):
+                line = self.gameplay_screen.current_solution_steps[line_idx]
                 if char_idx < len(line):
                     self._create_character(line_idx, char_idx, line[char_idx])
                     was_created_for_pulse = True
@@ -401,9 +467,11 @@ class SolutionSymbolDisplay:
             
             if count >= pulses * 2:
                 # Pulsation complete
-                should_stay_visible = (line_idx, char_idx) in self.visible_chars_cache
+                # Check visibility based on gameplay_screen.solution_char_details
+                detail_to_check = next((d for d in self.gameplay_screen.solution_char_details if d['line_idx'] == line_idx and d['char_idx'] == char_idx), None)
+                should_stay_visible_gs = detail_to_check.get('is_visible_on_b', False) if detail_to_check else False
                 
-                if should_stay_visible:
+                if should_stay_visible_gs:
                     # Update appearance to standard visible state
                     try:
                         self.canvas.itemconfig(text_id, fill=self.text_color)
@@ -483,9 +551,11 @@ class SolutionSymbolDisplay:
         
         # Check if the symbol should remain visible
         if line_idx_for_revert != -1 and char_idx_for_revert != -1:
-            should_stay_visible = (line_idx_for_revert, char_idx_for_revert) in self.visible_chars_cache
+            # Check visibility based on gameplay_screen.solution_char_details
+            detail_to_check = next((d for d in self.gameplay_screen.solution_char_details if d['line_idx'] == line_idx_for_revert and d['char_idx'] == char_idx_for_revert), None)
+            should_stay_visible_gs = detail_to_check.get('is_visible_on_b', False) if detail_to_check else False
             
-            if should_stay_visible:
+            if should_stay_visible_gs:
                 # Update to standard visible appearance
                 text_id = self.drawn_symbol_items.get((line_idx_for_revert, char_idx_for_revert, 'text'))
                 shadow_id = self.drawn_symbol_items.get((line_idx_for_revert, char_idx_for_revert, 'shadow'))
@@ -562,17 +632,17 @@ class SolutionSymbolDisplay:
             logging.error(f"Canvas dimensions not available for coordinate calculation at ({line_idx}, {char_idx})")
             return canvas_width / 2 if canvas_width else 300, canvas_height / 2 if canvas_height else 200 # Fallback
 
-        num_steps_to_draw = min(len(self.current_solution_steps_cache), self.max_lines_displayable)
+        num_steps_to_draw = min(len(self.gameplay_screen.current_solution_steps), self.max_lines_displayable)
         if num_steps_to_draw == 0 or line_idx >= num_steps_to_draw:
             logging.error(f"Line index {line_idx} is out of displayable range (max: {num_steps_to_draw})")
             return canvas_width / 2, canvas_height / 2 # Fallback if line_idx is out of displayable range
 
         # Ensure line_idx is within bounds before accessing current_solution_steps
-        if line_idx < 0 or line_idx >= len(self.current_solution_steps_cache):
+        if line_idx < 0 or line_idx >= len(self.gameplay_screen.current_solution_steps):
             logging.error(f"SolutionSymbolDisplay: get_symbol_coordinates - line_idx {line_idx} out of bounds.")
             return canvas_width / 2, canvas_height / 2
 
-        line_text = self.current_solution_steps_cache[line_idx]
+        line_text = self.gameplay_screen.current_solution_steps[line_idx]
         
         if char_idx < 0 or char_idx >= len(line_text):
             logging.error(f"SolutionSymbolDisplay: get_symbol_coordinates - char_idx {char_idx} out of bounds for line.")
@@ -612,6 +682,57 @@ class SolutionSymbolDisplay:
         self.canvas.delete("solution_text_ssd")
         self.canvas.delete("line_marker_ssd")
         logging.info("SolutionSymbolDisplay: Cleared all visuals.")
+
+    def mark_char_as_transported(self, line_idx, char_idx):
+        """
+        Marks a character as transported to Window C.
+        This updates its state in gameplay_screen.solution_char_details
+        and removes its visual representation from this canvas (Canvas B).
+        """
+        char_detail_to_update = None
+        for detail in self.gameplay_screen.solution_char_details:
+            if detail and detail['line_idx'] == line_idx and detail['char_idx'] == char_idx:
+                char_detail_to_update = detail
+                break
+
+        if char_detail_to_update:
+            # Update state in the canonical list
+            char_detail_to_update['transported_to_c'] = True
+            char_detail_to_update['is_visible_on_b'] = False # No longer visible on Canvas B
+            
+            # Remove from canvas B if it was drawn
+            # Its canvas_id is stored in the detail itself
+            text_id_to_delete = char_detail_to_update.get('canvas_id')
+            shadow_tag_to_delete = f"ssd_{line_idx}_{char_idx}_shadow" # Assuming tag structure
+
+            if text_id_to_delete:
+                try:
+                    self.canvas.delete(text_id_to_delete)
+                except tk.TclError:
+                    logging.warning(f"mark_char_as_transported: TclError deleting text_id {text_id_to_delete} for ({line_idx},{char_idx})")
+                    pass # Item might already be gone
+            
+            # Delete shadow by tag
+            shadow_items = self.canvas.find_withtag(shadow_tag_to_delete)
+            for item_id in shadow_items:
+                try:
+                    self.canvas.delete(item_id)
+                except tk.TclError:
+                    logging.warning(f"mark_char_as_transported: TclError deleting shadow_item {item_id} for ({line_idx},{char_idx})")
+                    pass # Item might already be gone
+
+            # Clear canvas_id as it's no longer on this canvas
+            char_detail_to_update['canvas_id'] = None
+            
+            # Clean from local drawn_symbol_items cache as well
+            if (line_idx, char_idx, 'text') in self.drawn_symbol_items:
+                del self.drawn_symbol_items[(line_idx, char_idx, 'text')]
+            if (line_idx, char_idx, 'shadow') in self.drawn_symbol_items:
+                del self.drawn_symbol_items[(line_idx, char_idx, 'shadow')]
+
+            logging.info(f"SolutionSymbolDisplay: Marked char ({line_idx},{char_idx}) as transported. Visuals removed from Canvas B.")
+        else:
+            logging.warning(f"SolutionSymbolDisplay: mark_char_as_transported - Could not find char detail for ({line_idx},{char_idx}) to mark as transported.")
 
     def handle_canvas_redraw_for_worms(self):
         """

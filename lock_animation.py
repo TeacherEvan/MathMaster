@@ -135,13 +135,19 @@ class LockAnimation:
         segment_outline_colors = [self._darken_color(color, 0.8) for color in segment_colors]
         
         # Lock mechanism parts (4 segments inside the body) - Spaced out for taller lock
-        body_bottom = self.y + self.size // 2 + self.size // 3  # Bottom of taller body
-        segment_height = (body_bottom - (self.y - self.size // 2)) // self.total_parts
+        body_top_y = self.y - self.size // 2 # Top of the main body rectangle
+        body_bottom_y = self.y + self.size // 2 + self.size // 3  # Bottom of taller body
+        total_segment_area_height = body_bottom_y - body_top_y
         
+        segment_height_gross = total_segment_area_height / self.total_parts # Use float division for precision
+        segment_padding = int(segment_height_gross * 0.05) # 5% padding top and bottom of gross height
+
         # Create segments and diagonal arms between them
         for i in range(self.total_parts):
-            y_top = self.y - self.size // 2 + i * segment_height + 5
-            y_bottom = self.y - self.size // 2 + (i + 1) * segment_height - 5
+            # Calculate precise y coordinates for each segment
+            y_top_calc = body_top_y + (i * segment_height_gross) + segment_padding
+            y_bottom_calc = body_top_y + ((i + 1) * segment_height_gross) - segment_padding
+            
             x_left = self.x - self.size // 3
             x_right = self.x + self.size // 3
             
@@ -150,8 +156,8 @@ class LockAnimation:
 
             # Main segment body
             segment = self.canvas.create_rectangle(
-                x_left, y_top,
-                x_right, y_bottom,
+                x_left, y_top_calc, # Use calculated y_top_calc
+                x_right, y_bottom_calc, # Use calculated y_bottom_calc
                 fill=base_color_hex, outline=outline_color_hex, width=2, tags="lock_visual"
             )
             self.lock_parts_items.append(segment)
@@ -159,43 +165,44 @@ class LockAnimation:
             # Add subtle 3D effect/shading to segments
             # Top highlight
             self.canvas.create_line(
-                x_left + 2, y_top + 2,
-                x_right - 2, y_top + 2,
+                x_left + 2, y_top_calc + 2, # Use calculated y_top_calc
+                x_right - 2, y_top_calc + 2, # Use calculated y_top_calc
                 fill=self._brighten_color(base_color_hex, 1.2), width=2, tags="lock_visual"
             )
             # Left highlight
             self.canvas.create_line(
-                x_left + 2, y_top + 2,
-                x_left + 2, y_bottom -2,
+                x_left + 2, y_top_calc + 2, # Use calculated y_top_calc
+                x_left + 2, y_bottom_calc -2, # Use calculated y_bottom_calc
                 fill=self._brighten_color(base_color_hex, 1.1), width=2, tags="lock_visual"
             )
             # Bottom shadow
             self.canvas.create_line(
-                x_left + 2, y_bottom -2,
-                x_right -2, y_bottom -2,
+                x_left + 2, y_bottom_calc -2, # Use calculated y_bottom_calc
+                x_right -2, y_bottom_calc -2, # Use calculated y_bottom_calc
                 fill=self._darken_color(base_color_hex, 0.7), width=2, tags="lock_visual"
             )
             # Right shadow
             self.canvas.create_line(
-                x_right -2, y_top + 2,
-                x_right -2, y_bottom -2,
+                x_right -2, y_top_calc + 2, # Use calculated y_top_calc
+                x_right -2, y_bottom_calc -2, # Use calculated y_bottom_calc
                 fill=self._darken_color(base_color_hex, 0.8), width=2, tags="lock_visual"
             )
             
             # Store original positions for separation animation
-            self.original_segment_positions.append((y_top, y_bottom))
+            self.original_segment_positions.append((y_top_calc, y_bottom_calc))
             
             # Create hidden diagonal arms after the first segment
             # These will be revealed when a segment is unlocked
             if i > 0:
                 # Start from bottom of previous segment to top of current
-                prev_bottom = self.y - self.size // 2 + i * segment_height - 5
+                # prev_bottom = self.y - self.size // 2 + i * segment_height_gross - segment_padding
+                prev_original_y_top, prev_original_y_bottom = self.original_segment_positions[i-1]
                 
                 # Calculate diagonal line coordinates
                 arm_start_x = self.x - self.size // 6  # Left side
-                arm_start_y = prev_bottom
+                arm_start_y = prev_original_y_bottom # Use the calculated bottom of the previous segment
                 arm_end_x = self.x + self.size // 6  # Right side
-                arm_end_y = y_top
+                arm_end_y = y_top_calc # Use the calculated top of the current segment
                 
                 # Create diagonal arms (initially hidden)
                 diag_arm = self.canvas.create_line(
@@ -2136,8 +2143,13 @@ class LockAnimation:
             self.canvas.after(30, lambda: self._animate_sparkles(sparkles))
             
     def reset(self):
-        """Reset the lock to its initial state (all parts red)"""
+        """Reset the lock to its initial state for a new problem."""
+        logging.info("[LockAnimation] Resetting lock animation.")
+        self.is_active = False # Stop any ongoing animations first
+        self.stop_all_persistent_animations() # Crucial: cancel all scheduled tasks
+
         self.unlocked_parts = 0
+        self.is_fully_unlocked = False
         
         # Reset all segments to locked state with varying colors
         segment_colors = ['#E74C3C', '#E57E31', '#D35400', '#C0392B']
@@ -2164,26 +2176,26 @@ class LockAnimation:
         except tk.TclError:
             pass
             
-        # Clean up any celebration animations
-        self._clear_celebration_animations()
-    
-    def _clear_celebration_animations(self):
-        """Clear any celebration animations"""
-        try:
-            self.canvas.delete("celebration_anim")
-            self.canvas.delete("lock_wave")  # Clear wave particles
-            for item in self.animation_items:
-                try:
-                    self.canvas.delete(item)
-                except tk.TclError:
-                    pass
-            self.animation_items = []
-        except tk.TclError:
-            pass
+        # Clear any celebration-specific animation timers (already covered by stop_all_persistent_animations)
+        # self._clear_celebration_animations() 
+
+        # Delete existing visuals and recreate
+        self.clear_visuals() # This will also call stop_all_persistent_animations
+        self._create_lock_visuals()
+        self._create_orbiting_particles() # Recreate initial static particles
+        
+        self.is_active = True # Reactivate for new problem
+        if self.canvas.winfo_exists(): # Start particle animation only if canvas exists
+            self.after_ids['animate_particles'] = self.canvas.after(30, self._animate_particles)
+        logging.info("[LockAnimation] Lock reset and visuals recreated.")
     
     def clear_visuals(self):
-        """Clear all visual elements of the lock and its animations from the canvas."""
-        self.is_active = False # SET TO FALSE FIRST
+        """Clear all visual elements of the lock from the canvas."""
+        # Stop animations before clearing visuals to prevent errors
+        self.stop_all_persistent_animations() # Add this call
+
+        # Clear main lock components
+        self.canvas.delete("lock_visual")
         
         # Cancel all scheduled .after() calls for this instance
         for after_id_key in list(self.after_ids.keys()): # Iterate over keys copy for safe modification
@@ -2223,3 +2235,19 @@ class LockAnimation:
         if character and character in "0123456789+-=xX":
             # Display the character formation
             self.display_character_formation(character)
+    
+    def stop_all_persistent_animations(self):
+        """Stop all ongoing after() loops managed by this instance."""
+        logging.debug(f"[LockAnimation] Stopping all persistent animations. Current after_ids: {list(self.after_ids.keys())}")
+        for key in list(self.after_ids.keys()): # Iterate over a copy of keys
+            after_id = self.after_ids.pop(key, None)
+            if after_id:
+                try:
+                    self.canvas.after_cancel(after_id)
+                    logging.debug(f"[LockAnimation] Cancelled after_id for '{key}': {after_id}")
+                except tk.TclError as e:
+                    # This can happen if the canvas is already destroyed
+                    logging.warning(f"[LockAnimation] TclError cancelling after_id for '{key}' ({after_id}): {e}")
+                except Exception as e:
+                    logging.error(f"[LockAnimation] Exception cancelling after_id for '{key}' ({after_id}): {e}")
+        self.is_active = False # Also ensure main animation flag is off

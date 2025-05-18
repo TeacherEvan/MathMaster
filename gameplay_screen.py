@@ -380,7 +380,9 @@ class GameplayScreen(tk.Toplevel):
         self.title(f"MathMaster - Level: {self.current_level}")
         self.geometry("1000x700") # Default size
         self.configure(bg="#1e1e1e")
-        
+
+        self.in_level_transition = False  # Initialize the attribute here
+
         # Auto-save directory - needs to be initialized before clear_saved_game can be called
         self.save_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "saves")
         os.makedirs(self.save_dir, exist_ok=True)
@@ -429,8 +431,10 @@ class GameplayScreen(tk.Toplevel):
         self.max_incorrect_clicks = 20
         self.game_over = False
         # self.flash_ids = {} # To manage flashing effects - Will be managed by SolutionSymbolDisplay
+        self.solution_char_details = [] # Initialize solution_char_details
         self.animation_after_id = None # For managing animation loop
         self.auto_save_after_id = None # For managing auto-save loop
+        self.transported_solution_chars = [] # Initialize list for transported chars
         self.completed_line_indices_for_problem = set() # For lock animation logic
         self.lock_animation = None # Placeholder for LockAnimation instance
         self.error_animation = None # Placeholder for ErrorAnimation instance
@@ -571,11 +575,13 @@ class GameplayScreen(tk.Toplevel):
         # Attempt to add stoic quote as watermark on solution_canvas
         self.add_stoic_quote_watermark()
             
-        # Notify worm animation about available symbols
-        if not self.solution_symbols_data_for_worms:
-            self._update_worm_solution_symbols(initial_call=True)
-        else:
-            self._update_worm_solution_symbols()
+        # Notify worm animation about available symbols - THIS IS THE PRIMARY TRIGGER after drawing
+        if hasattr(self, '_update_worm_solution_symbols') and callable(self._update_worm_solution_symbols):
+            # Ensure not in transition before starting the update loop
+            if not self.in_level_transition:
+                self._update_worm_solution_symbols(initial_call=True)
+            else:
+                logging.info("SSD drawing complete, but still in level transition. Worm symbol update deferred.")
     
     def add_stoic_quote_watermark(self):
         """Add a transparent stoic quote to window B (solution_canvas)"""
@@ -627,123 +633,105 @@ class GameplayScreen(tk.Toplevel):
                     logging.info(f"Repositioned stoic quote to prevent overflow: {new_y}px from top")
     
     def _init_worm_animation(self):
-        """Initializes the worm animation feature"""
-        if not hasattr(self, 'solution_canvas') or not self.solution_canvas.winfo_exists():
-            logging.error("Cannot initialize worm animation without solution_canvas.")
+        if not self.solution_canvas or not self.solution_canvas.winfo_exists():
+            logging.warning("Solution canvas not ready for worm animation initialization.")
             return
-            
-        # Initialize the actual worm animation
+
+        logging.info("Initializing Worm Animation for GameplayScreen")
         self.worm_animation = WormAnimation(
-            self.solution_canvas,
-            symbol_transport_callback=self.handle_symbol_transport,
+            self.solution_canvas, 
+            canvas_width=self.solution_canvas.winfo_width(), 
+            canvas_height=self.solution_canvas.winfo_height(),
+            symbol_transport_callback=self.handle_symbol_transport, # Signature now (line_idx, char_idx, char)
             symbol_targeted_for_steal_callback=self.handle_symbol_targeted_for_steal
         )
-        
-        # Set up the list of symbols for worms to potentially target
-        self.solution_symbols_data_for_worms = []
-        
-        # Start with animation paused - it will activate when first row is solved
-        logging.info("Worm animation initialized but inactive until first row solved.")
-        
-        # Schedule delayed start of the symbol update mechanism
-        # This delay gives the canvas time to be properly laid out and solution symbols to be drawn
-        # self.after(2000, self._update_worm_solution_symbols) # REMOVED - Now triggered by SSD callback
-        # The periodic update is still handled within _update_worm_solution_symbols itself.
-        # However, the VERY FIRST call will be from the SSD callback.
-        # If SSD draws before _init_worm_animation, _on_ssd_drawing_complete will defer.
-        # If _init_worm_animation runs first, then SSD callback will trigger the update.
-        pass
+        logging.info("Worm Animation initialized and linked to callbacks.")
 
-    def handle_symbol_transport(self, symbol_id, char):
-        """Handle callback when a worm transports a symbol to Window C"""
-        logging.info(f"Symbol '{char}' (ID: {symbol_id}) transported by worm, will appear in Window C")
-        
-        # Find which line and char index this symbol represents from self.solution_symbols_data_for_worms
-        transported_symbol_info = None
-        original_line_idx, original_char_idx = -1, -1
+    def handle_symbol_transport(self, transported_line_idx, transported_char_idx, transported_char):
+        """Callback from WormAnimation when a symbol is successfully transported (stolen).
+        Args:
+            transported_line_idx (int): The original line index of the transported symbol.
+            transported_char_idx (int): The original character index within the line of the transported symbol.
+            transported_char (str): The character value of the transported symbol.
+        """
+        if not self.winfo_exists():
+            logging.warning("GameplayScreen: handle_symbol_transport called but window no longer exists.")
+            return
 
-        # The symbol_id from WormAnimation is the canvas item ID.
-        # We need to find which (line_idx, char_idx) it corresponds to.
-        # self.solution_symbols_data_for_worms contains dicts like:
-        # {'id': canvas_item_id, 'char': char, 'line_idx': line_idx, 'char_idx': char_idx, ...}
-        
-        found_in_worm_data = False
-        for symbol_data in self.solution_symbols_data_for_worms:
-            if symbol_data.get('id') == symbol_id: # symbol_id is the canvas item id
-                transported_symbol_info = symbol_data
-                original_line_idx = symbol_data.get('line_idx')
-                original_char_idx = symbol_data.get('char_idx')
-                found_in_worm_data = True
+        logging.info(f"GameplayScreen: Received transport callback for char '{transported_char}' at L{transported_line_idx} C{transported_char_idx}")
+
+        found_symbol_detail = None
+        # detail_index = -1 # Not strictly needed if we operate on found_symbol_detail directly
+
+        for detail in self.solution_char_details: # Iterate directly, no enumerate needed if index not used after find
+            if detail.get('line_idx') == transported_line_idx and \
+               detail.get('char_idx') == transported_char_idx:
+                found_symbol_detail = detail
                 break
-                
-        if not found_in_worm_data or original_line_idx == -1 or original_char_idx == -1:
-            logging.warning(f"Could not reliably find original (line, char) for transported symbol canvas ID {symbol_id} with char '{char}'. Worm data might be stale or ID mismatch.")
-            # Attempt to find by char if it's unique and not yet transported - less reliable
-            # This part can be complex to recover from if IDs don't match.
-            # For now, we rely on the ID match.
-            return
+        
+        if found_symbol_detail:
+            logging.info(f"Found matching symbol in solution_char_details: {found_symbol_detail}")
+            original_canvas_id = found_symbol_detail.get('canvas_id')
+
+            found_symbol_detail['transported_to_c'] = True
+            found_symbol_detail['is_visible_on_b'] = False
+
+            self.transported_solution_chars.append({
+                'char': transported_char,
+                'original_line': transported_line_idx,
+                'original_char_idx': transported_char_idx,
+                'original_canvas_id': original_canvas_id
+            })
+
+            if original_canvas_id and original_canvas_id != -1:
+                try:
+                    if self.solution_canvas.winfo_exists() and original_canvas_id in self.solution_canvas.find_all():
+                        self.solution_canvas.delete(original_canvas_id)
+                        logging.info(f"Deleted canvas item {original_canvas_id} for transported symbol '{transported_char}' from Window B.")
+                except tk.TclError as e:
+                    logging.warning(f"TclError deleting canvas_id {original_canvas_id} for transported char '{transported_char}': {e}")
             
-        logging.info(f"Found original position for symbol ID {symbol_id}: Line {original_line_idx}, Char {original_char_idx}")
+            char_tuple_to_remove = (transported_line_idx, transported_char_idx)
+            if char_tuple_to_remove in self.visible_chars:
+                self.visible_chars.remove(char_tuple_to_remove)
+                logging.info(f"Removed ({transported_line_idx}, {transported_char_idx}) from visible_chars.")
 
-        # Mark the character as 'hidden' or 'taken' in the solution display (Window B)
-        # The SolutionSymbolDisplay draws based on self.visible_chars.
-        # So, we remove it from visible_chars.
-        if (original_line_idx, original_char_idx) in self.visible_chars:
-            self.visible_chars.remove((original_line_idx, original_char_idx))
-            logging.info(f"Removed ({original_line_idx},{original_char_idx}) from self.visible_chars.")
-        
-        # Trigger a redraw of Window B to reflect the symbol is gone (or appears as non-visible)
-        if self.solution_symbol_display:
-            self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars)
-            logging.info(f"Symbol '{char}' (L{original_line_idx}C{original_char_idx}) visually removed/hidden in Window B via SolutionSymbolDisplay update.")
+            if hasattr(self, 'solution_symbol_display') and self.solution_symbol_display:
+                self.solution_symbol_display.mark_char_as_transported(transported_line_idx, transported_char_idx)
 
-            # Pulsate the spot where the symbol was taken, maybe with a different "empty" effect
-            # For now, no specific effect on Window B for "taken", the symbol just disappears.
-            # User request: "whenever a worm interacts with one It BRIGHTLY pulsates"
-            # This pulsation should happen when the worm *targets* or *takes* the symbol.
-            # Let's make it pulsate when taken for now with a specific color.
-            self.solution_symbol_display.start_pulsation(
-                original_line_idx, 
-                original_char_idx, 
-                pulse_color="#707070", # Darker pulse for "taken"
-                base_color="#FFFFFF", # Base should be the invisible color
-                duration=700, 
-                pulses=2
+            self.incorrect_clicks += 1
+            self._update_score_display()
+            if hasattr(self, 'lock_animation') and self.lock_animation: # Check lock_animation exists
+                self.lock_animation.shake_particles(intensity=0.5)
+
+            if hasattr(self, 'error_anim_manager_c') and self.error_anim_manager_c:
+                self.error_anim_manager_c.draw_crack_effect()
+
+            # Add the stolen character to Window C as a falling symbol
+            if hasattr(self, 'falling_symbols') and self.falling_symbols:
+                x_pos_c = random.randint(50, self.canvas_c.winfo_width() - 50 if self.canvas_c.winfo_width() > 100 else 50)
+                new_falling_symbol = {
+                    'char': transported_char,
+                    'x': x_pos_c,
+                    'y': 10, 
+                    'id': None, 
+                    'size': 44, 
+                    'is_transported': True, # Mark as transported
+                    'original_line_idx': transported_line_idx,
+                    'original_char_idx': transported_char_idx
+                }
+                self.falling_symbols.falling_symbols_on_screen.append(new_falling_symbol)
+                logging.info(f"Added transported symbol '{transported_char}' to falling symbols in Window C.")
+
+            logging.info(f"Symbol '{transported_char}' (L{transported_line_idx}, C{transported_char_idx}) processed as transported.")
+            self.update_completion_percentage()
+        else:
+            logging.warning(
+                f"Could not find matching symbol for transported char '{transported_char}' at L{transported_line_idx} C{transported_char_idx} in solution_char_details. "
+                f"This might occur if solution_char_details was modified before callback completion."
             )
+        # Worm animation scheduling is handled internally by WormAnimation class
 
-
-        # Create a copy of this character as a falling symbol in Window C
-        if not hasattr(self, 'falling_symbols') or not self.falling_symbols:
-            return
-        
-        # Manually create a new falling symbol
-        x_pos = random.randint(50, self.symbol_canvas.winfo_width() - 50)
-        new_symbol_data_for_falling_list = {
-            'char': char,
-            'x': x_pos,
-            'y': 10,  # Near the top
-            'id': None, # This will be populated by FallingSymbols when it creates the canvas item
-            'size': 44,  # Match the size in FallingSymbols
-            'is_transported_worm_symbol': True,
-            'original_line_idx': original_line_idx,
-            'original_char_idx': original_char_idx,
-            'original_char_tag': f"sol_{original_line_idx}_{original_char_idx}"
-        }
-        
-        # Add to falling symbols list
-        self.falling_symbols.falling_symbols_on_screen.append(new_symbol_data_for_falling_list)
-
-        # Add to our persistent list of symbols transported by worms
-        self.transported_by_worm_symbols.append({
-            'char': char,
-            'original_line_idx': original_line_idx,
-            'original_char_idx': original_char_idx,
-            'original_char_tag': f"sol_{original_line_idx}_{original_char_idx}",
-            'transported_at': time.time() # Optional: for later debugging or limits
-        })
-        
-        logging.info(f"Symbol '{char}' (tag: {f"sol_{original_line_idx}_{original_char_idx}"}) added to falling symbols in Window C and tracked as worm-transported.")
-        
     def handle_symbol_targeted_for_steal(self, worm_id, symbol_data):
         """Callback from WormAnimation when a worm targets a symbol for stealing."""
         self.currently_targeted_by_worm = {
@@ -771,9 +759,9 @@ class GameplayScreen(tk.Toplevel):
     
     def _update_worm_solution_symbols(self, initial_call=False):
         """Update the list of solution symbols for worm interaction"""
-        # Skip updates during transitions to avoid lag
-        if hasattr(self, 'in_level_transition') and self.in_level_transition:
-            logging.info("Skipping worm symbols update during level transition")
+        # Skip updates if window doesn't exist or during transitions
+        if not self.winfo_exists() or self.in_level_transition: # Check in_level_transition flag HERE
+            logging.info("Skipping worm symbols update: window gone or in transition.")
             return
             
         # Initialize retry counter if needed
@@ -783,142 +771,112 @@ class GameplayScreen(tk.Toplevel):
         # Limit excessive retries to avoid CPU overload
         if self._worm_update_retries > 5:
             logging.warning(f"Too many worm update retries ({self._worm_update_retries}), delaying next update")
-            self.after(2000, self._reset_worm_update_retries)
+            if self.winfo_exists(): # Check again before scheduling
+                self.after(2000, self._reset_worm_update_retries)
             return
             
         # Increment retry counter
         self._worm_update_retries += 1
         
         if not hasattr(self, 'worm_animation') or not self.worm_animation or not self.solution_symbol_display:
-            if not initial_call:
+            if not initial_call and self.winfo_exists(): # Check again before scheduling
                 self.after(1000, lambda: self._update_worm_solution_symbols(initial_call=False))
             else:
-                # For initial call, if components not ready, _on_ssd_drawing_complete will retry calling this.
-                logging.info("_update_worm_solution_symbols (initial_call): Components (worm_animation or ssd) not ready. Relying on _on_ssd_drawing_complete to retry.")
+                logging.info("_update_worm_solution_symbols (initial_call or no reschedule): Components not ready.")
             return
             
-        # Quick check if solution canvas still exists to avoid errors
         if not self.solution_canvas.winfo_exists():
             logging.warning("Solution canvas does not exist during worm symbol update.")
             return
             
-        # Ensure solution_symbol_display has drawn symbols before trying to find them
         if not self.solution_symbol_display.character_positions:
-            if initial_call:
-                # For initial call, use longer delay since we're just starting up
-                self.after(500, lambda: self._update_worm_solution_symbols(initial_call=True))
-            else:
-                # For regular updates, use shorter delay
-                self.after(250, lambda: self._update_worm_solution_symbols(initial_call=False))
+            if self.winfo_exists(): # Check again before scheduling
+                delay = 500 if initial_call else 250
+                self.after(delay, lambda: self._update_worm_solution_symbols(initial_call=initial_call))
             return
             
-        # Check if canvas is ready and has dimensions
         canvas_width, canvas_height = self.solution_symbol_display.get_canvas_dimensions()
         if canvas_width is None or canvas_height is None or canvas_width <= 1 or canvas_height <= 1:
-            if initial_call:
-                self.after(500, lambda: self._update_worm_solution_symbols(initial_call=True))
-            else:
-                self.after(250, lambda: self._update_worm_solution_symbols(initial_call=False))
+            if self.winfo_exists(): # Check again before scheduling
+                delay = 500 if initial_call else 250
+                self.after(delay, lambda: self._update_worm_solution_symbols(initial_call=initial_call))
             return
         
         # OPTIMIZATION: After a level transition, wait a bit longer for canvas to be fully ready
-        # This prevents the flood of warning messages about missing canvas items
+        # This optimization is less critical now with the in_level_transition check at the start
+        # but kept for robustness during the initial phase after transition completion.
         if hasattr(self, 'level_transition_timer') and self.level_transition_timer:
             time_since_transition = time.time() - self.level_transition_timer
-            if time_since_transition < 1.0:  # Give canvas 1 second to fully stabilize after transition
+            if time_since_transition < 1.0 and not self.in_level_transition: # Only if transition *just* finished
                 logging.info(f"Recent level transition ({time_since_transition:.2f}s ago). Delaying worm symbol update.")
-                self.after(200, lambda: self._update_worm_solution_symbols(initial_call=False))
+                if self.winfo_exists(): # Check again before scheduling
+                    self.after(200, lambda: self._update_worm_solution_symbols(initial_call=False))
                 return
         
-        # Reset solution symbols list for worms
         self.solution_symbols_data_for_worms = []
-        
-        # Keep track of warnings to avoid log flooding
         missing_tags = 0
         found_tags = 0
         
         try:
-            # Bulk find all text items in one go for better performance
-            all_text_items = set(self.solution_canvas.find_withtag("solution_text_ssd"))
-            
-            if not all_text_items and initial_call:
-                # If no text items found on initial call, retry after a delay
-                logging.info("No solution text items found during initial worm symbol update. Retrying in 500ms.")
-                self.after(500, lambda: self._update_worm_solution_symbols(initial_call=True))
-                return
+            # Iterate GameplayScreen's canonical solution_char_details
+            for char_detail in self.solution_char_details:
+                if not char_detail or char_detail.get('is_placeholder'):
+                    continue # Skip placeholders or empty details
                 
-            # Loop through all characters in current solution steps
-            for line_idx, line in enumerate(self.current_solution_steps):
-                for char_idx, char_val in enumerate(line):
-                    if not char_val.strip():  # Skip spaces for worm targeting
-                        continue
-                    
-                    # Get precise coordinates for this symbol
-                    coords = self.solution_symbol_display.get_symbol_coordinates(line_idx, char_idx)
-                    if not coords or coords[0] is None or coords[1] is None:
-                        continue
-                    
-                    # Get canvas item ID if available
-                    char_tag_text = f"ssd_{line_idx}_{char_idx}_text"
-                    items = []
-                    
-                    try:
-                        items = self.solution_symbol_display.canvas.find_withtag(char_tag_text)
-                        items = [item for item in items if item in all_text_items]  # Filter to known text items
-                    except tk.TclError:
-                        # Canvas might be in a transient state
-                        pass
-                    
-                    # Check if we found a valid canvas item
-                    if items:
-                        symbol_canvas_id = items[0]
-                        found_tags += 1
-                        
-                        is_visible_to_player = (line_idx, char_idx) in self.visible_chars
-                        
-                        self.solution_symbols_data_for_worms.append({
-                            'id': symbol_canvas_id,
-                            'position': coords,
-                            'char': char_val,
-                            'line_idx': line_idx,
-                            'char_idx': char_idx,
-                            'visible_to_player': is_visible_to_player
-                        })
-                    else:
-                        # We may not have found a canvas item for this character
-                        # but we still have valid coordinates from the SolutionSymbolDisplay
-                        # Add it with a placeholder ID that the worm can still use for position targeting
-                        missing_tags += 1
-                        # Still add to worm data but with placeholder ID
-                        self.solution_symbols_data_for_worms.append({
-                            'id': -1,  # Placeholder ID
-                            'position': coords,
-                            'char': char_val,
-                            'line_idx': line_idx,
-                            'char_idx': char_idx,
-                            'visible_to_player': (line_idx, char_idx) in self.visible_chars,
-                            'is_placeholder': True  # Flag as placeholder to avoid operations requiring a real canvas ID
-                        })
+                line_idx = char_detail['line_idx']
+                char_idx = char_detail['char_idx']
+                char_val = char_detail['char']
+
+                # Get coordinates using SolutionSymbolDisplay's method which uses its character_positions cache or calculates
+                coords = self.solution_symbol_display.get_symbol_coordinates(line_idx, char_idx)
+                
+                if not coords or coords[0] is None or coords[1] is None:
+                    # This might happen if SSD hasn't calculated positions yet for this specific char
+                    # logging.debug(f"_update_worm_solution_symbols: No coords from SSD for L{line_idx}C{char_idx}. Skipping.")
+                    continue
+                
+                # The canvas_id in char_detail is the source of truth for the drawn item ID
+                symbol_canvas_id = char_detail.get('canvas_id') 
+                is_visible_to_player = char_detail.get('is_visible_on_b', False)
+                is_transported = char_detail.get('transported_to_c', False)
+
+                if symbol_canvas_id and symbol_canvas_id != -1 and not is_transported:
+                    found_tags += 1 # Count as found if it has a canvas ID and isn't transported
+                    self.solution_symbols_data_for_worms.append({
+                        'id': symbol_canvas_id,
+                        'position': coords,
+                        'char': char_val,
+                        'line_idx': line_idx,
+                        'char_idx': char_idx,
+                        'visible_to_player': is_visible_to_player
+                    })
+                elif not is_transported: # If no canvas_id but not transported, it's effectively missing for worms
+                    missing_tags += 1
+                    self.solution_symbols_data_for_worms.append({
+                        'id': -1, # Mark as not on canvas / placeholder for worm logic
+                        'position': coords,
+                        'char': char_val,
+                        'line_idx': line_idx,
+                        'char_idx': char_idx,
+                        'visible_to_player': is_visible_to_player,
+                        'is_placeholder': True # Treat as placeholder if not drawn
+                    })
             
-            # Log a summary message only in debug mode or on initial call
             if missing_tags > 0 and (self.debug_mode or initial_call):
                 total_tags = missing_tags + found_tags
                 logging.info(f"Worm symbols update: found {found_tags}/{total_tags} canvas items ({missing_tags} missing)")
             
-            # Update the worm animation with the new symbols
             self.worm_animation.update_solution_symbols(self.solution_symbols_data_for_worms)
-            
-            # Reset retry counter on success
             self._worm_update_retries = 0
             
-            # Schedule the next regular update - but not if this was an initial call (handled by other mechanisms)
-            if not initial_call:
-                # Reduced frequency of updates to every 2 seconds - still responsive enough but less overhead
+            # Only reschedule if not an initial call AND not in transition anymore
+            if not initial_call and self.winfo_exists() and not self.in_level_transition:
                 self.after(2000, lambda: self._update_worm_solution_symbols(initial_call=False))
                 
         except Exception as e:
             logging.error(f"Error in _update_worm_solution_symbols: {e}")
-            if not initial_call:
+            # Only reschedule if not an initial call AND not in transition anymore
+            if not initial_call and self.winfo_exists() and not self.in_level_transition:
                 self.after(2000, lambda: self._update_worm_solution_symbols(initial_call=False))
     
     def _check_if_step_complete(self, line_idx):
@@ -1178,23 +1136,28 @@ class GameplayScreen(tk.Toplevel):
         self.frame_b.grid_rowconfigure(1, weight=1)  # Solution lines area - expandable
         
         # Create a dedicated container frame for the help button to ensure visibility
-        self.help_button_container = tk.Frame(self.frame_b, bg="#FFDDDD", height=100)
+        # Ensure this container does not have a visible border or distracting background
+        self.help_button_container = tk.Frame(self.frame_b, bg="#FFFFFF", bd=0, relief=tk.FLAT) # Ensure bg matches frame_b and no border
         self.help_button_container.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
         self.help_button_container.grid_propagate(False)  # Force fixed height
         
         # Add Help Button to the container
         print("Creating help button...")
         try:
-            self.help_button = HelpButton(self.help_button_container, self)
+            self.help_button = HelpButton(self.help_button_container, self) # Pass self.help_button_container
             print("Help button created successfully!")
         except Exception as e:
             print(f"ERROR creating help button: {e}")
             logging.error(f"Failed to create help button: {e}")
 
         # Canvas for Solution Lines
-        # Modified: Set highlightthickness to 0, highlightbackground to match bg
-        self.solution_canvas = tk.Canvas(self.frame_b, bg="#FFFFFF", highlightthickness=0, highlightbackground="#FFFFFF")
+        # Ensure solution_canvas also has no border and matches the frame_b background
+        self.solution_canvas = tk.Canvas(self.frame_b, bg="#FFFFFF", highlightthickness=0, bd=0, relief=tk.FLAT)
         self.solution_canvas.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+        
+        # Make the solution canvas completely invisible initially (0% opacity)
+        self.solution_canvas.config(bg="#FFFFFF")
+        self.solution_canvas_visible = False
         
         # Set a flag to track if help button has been clicked
         self.help_button_clicked = False
@@ -1282,6 +1245,8 @@ class GameplayScreen(tk.Toplevel):
         """Loads a random problem for the selected level"""
         logging.info(f"Attempting to load new problem for level: {self.current_level}")
         
+        self.solution_char_details.clear() # Clear details from previous problem
+
         if self.current_level not in PROBLEMS:
             logging.error(f"Invalid level: {self.current_level}")
             self.problem_prefix_label.config(text="Error")
@@ -1307,6 +1272,8 @@ class GameplayScreen(tk.Toplevel):
         # Clear falling symbols
         if self.falling_symbols:
             self.falling_symbols.clear_symbols()
+            self.falling_symbols.generation_rate = 0.60 # Reset generation rate
+            logging.info("Falling symbols cleared and generation rate reset.")
             
         self.completed_line_indices_for_problem.clear() # Reset for new problem
         if self.lock_animation:
@@ -1389,6 +1356,20 @@ class GameplayScreen(tk.Toplevel):
             # Get and prepare solution steps
             self.current_solution_steps = generate_solution_steps(self.current_problem)
             logging.info(f"Generated {len(self.current_solution_steps)} solution steps")
+
+            # Populate solution_char_details based on the generated steps
+            self.solution_char_details = [] # Ensure it's empty before populating
+            for line_idx, step_text in enumerate(self.current_solution_steps):
+                for char_idx, char_val in enumerate(step_text):
+                    self.solution_char_details.append({
+                        'line_idx': line_idx,
+                        'char_idx': char_idx,
+                        'char': char_val,
+                        'canvas_id': None,  # Will be updated by SolutionSymbolDisplay
+                        'is_visible_on_b': False, # Initially not visible
+                        'transported_to_c': False,
+                        'is_placeholder': char_val.isspace() # Mark spaces as placeholders
+                    })
             
             # Detailed logging for generated solution steps
             if self.debug_mode:
@@ -1821,11 +1802,18 @@ class GameplayScreen(tk.Toplevel):
                 logging.info(f"[reveal_char] Character '{char_to_reveal_for_log}' at ({line_idx}, {char_idx}) is ALREADY in self.visible_chars. Skipping reveal.")
                 return
                 
-            # Add to visible chars
+            # Add to visible chars set (for legacy checks or simple visibility tracking)
             self.visible_chars.add((line_idx, char_idx))
+
+            # Update the canonical solution_char_details list
+            for detail in self.solution_char_details:
+                if detail['line_idx'] == line_idx and detail['char_idx'] == char_idx:
+                    detail['is_visible_on_b'] = True
+                    detail['transported_to_c'] = False # Ensure it's not marked as transported
+                    # canvas_id will be updated by SolutionSymbolDisplay._create_character
+                    break
             
             # Ensure SolutionSymbolDisplay is synced with the new visible_chars state
-            # This will redraw symbols, applying correct initial visibility and colors.
             if self.solution_symbol_display:
                 self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars)
 
@@ -2069,99 +2057,40 @@ class GameplayScreen(tk.Toplevel):
         
         try:
             if choice == "retry":
-                # Clear game state and load new problem
-                self.clear_saved_game()
-                self.clear_all_cracks()
-                logging.info("Retry: About to load new problem")
-                self.load_new_problem()
-                self.game_over = False
-                # Reset game state
-                self.visible_chars = set()
-                self.incorrect_clicks = 0
+                # Use the centralized reset mechanism for retry
+                logging.info("Retry selected: Using centralized reset")
+                self.reset_for_new_level()
                 
-                # Re-initialize falling symbols animation
-                if hasattr(self, 'falling_symbols') and self.falling_symbols:
-                    self.falling_symbols.stop_animation()
-                logging.info("Retry: Creating new falling symbols")
-                self.falling_symbols = None
-                self.falling_symbols = FallingSymbols(self.symbol_canvas, list("0123456789Xx +-=÷×*/()"))
-                self.after(100, self.falling_symbols.start_animation)
-                logging.info("Retry: Game state reset and new problem loaded")
-            elif choice == "level_select":
-                # Return to level select screen
-                self.parent.deiconify()  # Show the parent (level select) window
-                self.destroy()  # Close the gameplay window
-                logging.info("Returning to level select screen")
             elif choice == "next":
-                # Set transition flag to prevent overlapping animations
-                self.in_level_transition = True
-                logging.info("Level transition started - preventing overlapping animations")
+                # Use the same centralized reset mechanism for next level
+                logging.info("Next level selected: Using centralized reset")
+                self.reset_for_new_level()
                 
-                # Cancel any pending animation timers
+            elif choice == "level_select":
+                # When returning to level select, ensure all animations are properly disabled
+                logging.info("Level select chosen: Cleaning up gameplay screen before destroying")
                 self._disable_all_animations()
                 
-                # Clear current game state
-                self.clear_saved_game()
-                self.clear_all_cracks()
+                # Show the parent window
+                if self.parent and hasattr(self.parent, 'deiconify') and self.parent.winfo_exists():
+                    self.parent.deiconify()  # Show the parent (level select) window
                 
-                # Reset state variables
-                self.game_over = False
-                self.visible_chars = set()
-                self.incorrect_clicks = 0
-                self.currently_targeted_by_worm = None
-                self.transported_by_worm_symbols = []  # Clear tracked worm symbols
+                # Destroy this window
+                if self.winfo_exists():
+                    self.destroy()  # Close the gameplay window
                 
-                # Set level transition timer to help coordinate animations
-                self.level_transition_timer = time.time()
-                
-                # Stop existing animation
-                logging.info("Next: Stopping existing animations")
-                if hasattr(self, 'falling_symbols') and self.falling_symbols:
-                    self.falling_symbols.stop_animation()
-                self.falling_symbols = None
-                
-                # Reset worm animation if it exists
-                if hasattr(self, 'worm_animation') and self.worm_animation:
-                    logging.info("Next: Stopping worm animation and clearing worms.")
-                    self.worm_animation.stop_animation()
-                    self.worm_animation.clear_worms()
-                    # Reset worm-specific state variables related to GameplayScreen
-                    self.currently_targeted_by_worm = None
-                    self.transported_by_worm_symbols = []
-                    self.solution_symbols_data_for_worms = []
-                
-                # First explicitly clear all visuals on solution_canvas to prevent
-                # any stale canvas items from causing issues
-                if hasattr(self, 'solution_symbol_display') and self.solution_symbol_display:
-                    self.solution_symbol_display.clear_all_visuals()
-                    logging.info("Explicitly cleared Window B visuals during level transition")
-                
-                # Update stoic quote for the new level
-                self.stoic_quote = get_random_quote()
-                if hasattr(self, 'stoic_quote_id') and self.stoic_quote_id:
-                    try:
-                        self.solution_canvas.delete(self.stoic_quote_id)
-                    except tk.TclError:
-                        pass
-                    self.stoic_quote_id = None
-                
-                # Load new problem - do this first before any animations
-                logging.info("Next: Loading new problem")
-                self.load_new_problem()
-                logging.info(f"Next: New problem loaded: '{self.current_problem}'")
-                
-                # Schedule the restart of animations in sequence with delays
-                self.after(300, self._enable_animations_after_transition)
-                
-                logging.info("Level transition sequence initiated")
+                logging.info("Successfully returned to level select screen")
             else:
                 logging.error(f"Unknown popup choice: {choice}")
         except Exception as e:
             logging.error(f"Error handling popup choice '{choice}': {str(e)}")
             logging.error(traceback.format_exc())
-            # Try to recover by loading a new problem if possible
+            
+            # Recovery mechanism if reset fails
             try:
                 logging.info("Attempting recovery from popup handling error")
+                # Fall back to basic reset operations
+                self.in_level_transition = True
                 self.clear_saved_game()
                 self.clear_all_cracks()
                 self.game_over = False
@@ -2169,20 +2098,18 @@ class GameplayScreen(tk.Toplevel):
                 self.incorrect_clicks = 0
                 self.currently_targeted_by_worm = None
                 
-                # Stop any existing animations
-                if hasattr(self, 'falling_symbols') and self.falling_symbols:
-                    self.falling_symbols.stop_animation()
-                if hasattr(self, 'worm_animation') and self.worm_animation:
-                    self.worm_animation.stop_animation()
+                # Stop any existing animations using our disable method
+                self._disable_all_animations()
                 
-                # Reinitialize and load
+                # Basic problem loading
                 self.load_new_problem()
-                self.falling_symbols = FallingSymbols(self.symbol_canvas, list("0123456789Xx +-=÷×*/()"))
-                self.after(100, self.falling_symbols.start_animation)
-                logging.info("Recovered from error by loading new problem")
+                
+                # Basic animation restart
+                self.after(500, self._finish_transition)
+                
+                logging.info("Basic recovery completed")
             except Exception as recovery_error:
                 logging.error(f"Failed to recover from error: {str(recovery_error)}")
-                logging.error(traceback.format_exc())
                 # Last resort - return to level select
                 if self.parent and self.parent.winfo_exists():
                     self.parent.deiconify()
@@ -2390,55 +2317,61 @@ class GameplayScreen(tk.Toplevel):
             
     def exit_game(self, event=None):
         """Exit the gameplay screen and return to level select"""
-        logging.info("User exited gameplay screen.")
-        self.destroy()  # Close the gameplay screen window
+        logging.info("User exiting gameplay screen.")
+        
+        # Attempt to disable all animations and cancel timers before destroying
+        try:
+            if hasattr(self, 'in_level_transition') and not self.in_level_transition:
+                # If not already in a transition (which would call _disable_all_animations),
+                # call it now to clean up before explicit exit.
+                self._disable_all_animations()
+            elif not hasattr(self, 'in_level_transition'):
+                # If the flag doesn't exist for some reason, try to disable anyway
+                # This is a fallback, ideally the flag always exists.
+                self._disable_all_animations() 
+        except Exception as e:
+            logging.error(f"Exception during pre-exit cleanup in exit_game: {e}")
+
+        if hasattr(self.parent, 'deiconify') and self.parent.winfo_exists():
+            self.parent.deiconify() # Show the WelcomeScreen/LevelSelectScreen
+
+        if self.winfo_exists():
+            self.destroy()  # Close the gameplay screen window
+        logging.info("Gameplay screen destroyed.")
 
     def get_solution_char_coords(self, line_idx, char_idx):
         """Returns the canvas coordinates of a specific solution character.
+        Delegates to SolutionSymbolDisplay for accurate coordinates.
         
         Args:
             line_idx: The line/step index
             char_idx: The character index within the line
             
         Returns:
-            Tuple (x, y) of the character's position or None if not found
+            Tuple (x, y) of the character's center position or None if not found
         """
         try:
-            # Check for the correct attribute name (the attribute might be named differently)
-            solution_steps = getattr(self, 'solution_steps', None)
-            if solution_steps is None:
-                solution_steps = getattr(self, 'current_solution_steps', [])
-                
-            # Check if the indices are valid
-            if line_idx < 0 or line_idx >= len(solution_steps):
+            if not hasattr(self, 'solution_symbol_display') or not self.solution_symbol_display:
+                logging.warning("[get_solution_char_coords] SolutionSymbolDisplay not initialized.")
+                return None
+
+            # Use the SolutionSymbolDisplay to get coordinates
+            coords = self.solution_symbol_display.get_symbol_coordinates(line_idx, char_idx)
+            
+            if coords and coords[0] is not None and coords[1] is not None:
+                # SolutionSymbolDisplay.get_symbol_coordinates should already return center.
+                logging.debug(f"[get_solution_char_coords] Coords from SSD for L{line_idx}C{char_idx}: {coords}")
+                return coords
+            else:
+                logging.warning(f"[get_solution_char_coords] SSD returned invalid coords for L{line_idx}C{char_idx}: {coords}. Solution steps: {len(self.current_solution_steps)}")
+                if self.debug_mode and line_idx < len(self.current_solution_steps):
+                    logging.debug(f"Line content: '{self.current_solution_steps[line_idx]}'")
                 return None
                 
-            line = solution_steps[line_idx]
-            
-            # Handle different data structures (might be a string or a dict with 'text')
-            line_text = line if isinstance(line, str) else line.get('text', '')
-            
-            if char_idx < 0 or char_idx >= len(line_text):
-                return None
-                
-            # Try to get the canvas ID for this specific character
-            char_tag = f"line_{line_idx}_char_{char_idx}"
-            char_ids = self.solution_canvas.find_withtag(char_tag)
-            
-            if not char_ids:
-                return None
-                
-            # Get the coordinates (center of the character)
-            bbox = self.solution_canvas.bbox(char_ids[0])
-            if not bbox:
-                return None
-                
-            x = (bbox[0] + bbox[2]) / 2
-            y = (bbox[1] + bbox[3]) / 2
-            
-            return (x, y)
         except Exception as e:
-            logging.error(f"Error in get_solution_char_coords: {e}")
+            logging.error(f"Error in get_solution_char_coords for L{line_idx}C{char_idx}: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
             return None
 
     def provide_help(self):
@@ -2449,6 +2382,11 @@ class GameplayScreen(tk.Toplevel):
             # Set the flag to true since help button was clicked
             self.help_button_clicked = True
             
+            # Make the solution canvas visible on first help click
+            if not self.solution_canvas_visible:
+                self.solution_canvas_visible = True
+                logging.info("Making solution canvas visible now that help button was clicked")
+                
             # STEP 1: Find the next character to reveal
             valid_positions = self.find_next_required_char()
             if valid_positions:
@@ -2680,65 +2618,62 @@ class GameplayScreen(tk.Toplevel):
         """Disable all animations during transitions to prevent lag"""
         logging.info("Disabling all animations for transition")
         
-        # Set transition flag first to block any new timers or animations from starting
         self.in_level_transition = True
-        
-        # Track how many timers we cancelled for debugging
         cancelled_timers = 0
         
-        # Cancel any pending after() timers
-        for after_id in self.after_ids() if hasattr(self, 'after_ids') else []:
-            try:
-                self.after_cancel(after_id)
-                cancelled_timers += 1
-            except Exception:
-                pass
-                
-        logging.info(f"Cancelled {cancelled_timers} pending timers during transition")
-        
-        # Stop falling symbols animation and clear symbols
-        if hasattr(self, 'falling_symbols') and self.falling_symbols:
-            self.falling_symbols.stop_animation()
-            self.falling_symbols.clear_symbols()  # Also clear all symbols
-            logging.info("Falling symbols animation stopped and symbols cleared")
-            
-        # Reset teleport manager to cancel any pending teleports
-        if hasattr(self, 'teleport_manager') and self.teleport_manager:
-            # Clear any pending teleport operations
-            if hasattr(self.teleport_manager, 'clear_pending_operations'):
-                self.teleport_manager.clear_pending_operations()
-            logging.info("Teleport manager operations cleared")
-            
-        # Stop worm animations with more thorough clearing
-        if hasattr(self, 'worm_animation') and self.worm_animation:
-            self.worm_animation.stop_animation()
-            self.worm_animation.clear_worms()
-            self.worm_animation.handle_solution_canvas_redraw()
-            self.currently_targeted_by_worm = None
-            logging.info("Worm animation stopped and worms cleared")
-            
-        # Cancel worm symbol update timers
-        self._worm_update_retries = 0
-        
-        # Cancel any pending auto-save
+        # Cancel generic GameplayScreen after() timers if any were tracked by a non-standard `after_ids()`
+        # It's safer to manage after_ids within each component or for specific known GameplayScreen timers.
+        # For now, assuming self.after_ids() was a placeholder or for specific known timers.
+        # If GameplayScreen schedules its own loops (like auto_save_timer), they need explicit cancellation.
+
         if hasattr(self, 'auto_save_timer') and self.auto_save_timer:
             try:
                 self.after_cancel(self.auto_save_timer)
+                self.auto_save_timer = None # Clear the ID
+                cancelled_timers += 1
                 logging.info("Auto-save timer cancelled")
-            except Exception:
-                pass
-                
-        # Stop any pulsations in solution display
+            except Exception as e:
+                logging.warning(f"Error cancelling auto_save_timer: {e}")
+
+        # Stop FallingSymbols animation
+        if hasattr(self, 'falling_symbols') and self.falling_symbols:
+            self.falling_symbols.stop_animation()
+            self.falling_symbols.clear_symbols()
+            logging.info("Falling symbols animation stopped and symbols cleared")
+            
+        # Stop WormAnimation
+        if hasattr(self, 'worm_animation') and self.worm_animation:
+            self.worm_animation.stop_animation()
+            self.worm_animation.clear_worms() # Also clears particles and internal states
+            self.currently_targeted_by_worm = None # Reset gameplay screen's tracking
+            logging.info("Worm animation stopped and worms cleared")
+            
+        # Stop SolutionSymbolDisplay pulsations
         if hasattr(self, 'solution_symbol_display') and self.solution_symbol_display:
             self.solution_symbol_display.stop_all_pulsations()
-            self.solution_symbol_display.handle_canvas_redraw_for_worms()
-            self.solution_symbol_display.clear_all_visuals()
+            self.solution_symbol_display.clear_all_visuals() # Clear drawn symbols
             logging.info("Solution symbol display pulsations stopped and visuals cleared")
-        
-        # Reset error animation state
+
+        # Stop LockAnimation activities
+        if hasattr(self, 'lock_animation') and self.lock_animation:
+            self.lock_animation.stop_all_persistent_animations()
+            self.lock_animation.clear_visuals() # Ensure its canvas items are gone
+            logging.info("Lock animation persistent tasks stopped and visuals cleared")
+            
+        # Reset error animation state (clears cracks and any scheduled crack animations)
         if hasattr(self, 'error_animation') and self.error_animation:
             self.error_animation.clear_all_cracks()
             logging.info("Error animation cracks cleared")
+
+        # Clear teleport manager pending operations if any
+        if hasattr(self, 'teleport_manager') and self.teleport_manager and hasattr(self.teleport_manager, 'clear_pending_operations'):
+            self.teleport_manager.clear_pending_operations()
+            logging.info("Teleport manager operations cleared")
+        
+        # Placeholder for cancelling other specific GameplayScreen timers if they exist and are tracked
+        # Example: if self.some_other_timer_id: self.after_cancel(self.some_other_timer_id)
+        
+        logging.info(f"Explicitly cancelled known timers. Total (if auto_save was active): {cancelled_timers}")
             
         # Force garbage collection to clean up memory
         try:
@@ -2748,14 +2683,14 @@ class GameplayScreen(tk.Toplevel):
         except Exception:
             pass
             
-        logging.info("All animations disabled for transition")
+        logging.info("All animations and key activities disabled for transition")
             
     def _enable_animations_after_transition(self):
         """Restart animations in sequence after transition completes"""
         if not self.winfo_exists():
             return
             
-        logging.info("Restarting animations in sequence with increased delays")
+        logging.info("Restarting animations in sequence with conservative timing")
         
         # Step 1: Ensure UI is updated first
         self.update_idletasks()
@@ -2763,34 +2698,56 @@ class GameplayScreen(tk.Toplevel):
         # Step 2: Reset help display to avoid index errors (do this first)
         self._reset_help_display()
         
-        # Step 3: Re-create falling symbols but don't start yet
-        self.falling_symbols = FallingSymbols(self.symbol_canvas, list("0123456789Xx +-=÷×*/()"))
+        # Step 3: Re-create falling symbols but don't start yet (less resource intensive)
+        if not hasattr(self, 'falling_symbols') or self.falling_symbols is None:
+            self.falling_symbols = FallingSymbols(self.symbol_canvas, list("0123456789Xx +-=÷×*/()"))
         
-        # Define sequence of delayed operations with larger gaps
+        # Define sequence of delayed operations with progressively longer gaps
+        # The ordering and timing is crucial for preventing overlap
         schedule = [
-            (150, lambda: self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars)),
-            (300, lambda: self.add_stoic_quote_watermark()),
-            (500, lambda: self._reset_worm_system()),
-            (800, lambda: self.falling_symbols.start_animation()),
-            (1200, lambda: self._finish_transition())
+            # First update the solution display with current data
+            (250, lambda: self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars) if hasattr(self, 'solution_symbol_display') else None),
+            
+            # Then add the stoic quote watermark after solution display is updated
+            (600, lambda: self.add_stoic_quote_watermark()),
+            
+            # Reset worm system but don't start animation yet
+            (1000, lambda: self._reset_worm_system()),
+            
+            # Start falling symbols animation in window C
+            (1500, lambda: self.falling_symbols.start_animation() if hasattr(self, 'falling_symbols') and self.falling_symbols else None),
+            
+            # Finally, complete the transition process
+            (2000, lambda: self._finish_transition())
         ]
         
-        # Schedule each operation with proper delay
+        # Schedule each operation with proper delay and error handling
         for delay, operation in schedule:
-            self.after(delay, operation)
-        
-        logging.info("Animation restart sequence scheduled with optimized timing")
-        
-    def _reset_worm_system(self):
-        """Reset the worm system after transition"""
-        if hasattr(self, 'worm_animation') and self.worm_animation:
-            # Just make sure it's ready but not animating
-            self.worm_animation.reset_for_new_problem()
-            # It will start when the first step is completed
+            def safe_wrapper(op=operation):
+                try:
+                    # Check if window still exists before executing operation
+                    if self.winfo_exists() and not self.game_over:
+                        op()
+                except Exception as e:
+                    logging.error(f"Error during animation restart sequence: {e}")
             
+            self.after(delay, safe_wrapper)
+        
+        logging.info("Animation restart sequence scheduled with conservative timing")
+        
+        # Add a safety timer to ensure transition completes even if some operations fail
+        self.after(3000, lambda: self._finish_transition() if hasattr(self, 'in_level_transition') and self.in_level_transition else None)
+
+    def _reset_worm_system(self):
+        # Properly stop and clear the worm animation system to avoid glitches during level transition
+        if hasattr(self, 'worm_animation') and self.worm_animation:
+            self.worm_animation.stop_animation()
+            self.worm_animation.clear_worms()
+            self.worm_animation = None
+
         # Reset worm update retries counter
         self._worm_update_retries = 0
-        
+
     def _reset_help_display(self):
         """Reset help display to avoid index errors after transition"""
         try:
@@ -2856,3 +2813,53 @@ class GameplayScreen(tk.Toplevel):
             # ...rest of the method continues as before
         except Exception as e:
             logging.error(f"Error handling teleport_symbol: {e}")
+
+    def reset_for_new_level(self):
+        """
+        Comprehensive reset for transitioning to a new level without recreating UI.
+        This centralizes the level transition logic to avoid animation overlap and lag.
+        """
+        logging.info("=== BEGINNING COMPREHENSIVE LEVEL RESET ===")
+        
+        # Flag that we're in transition to prevent new animations from starting
+        self.in_level_transition = True
+        
+        # 1. Cancel all animations and timers
+        logging.info("1. Canceling all animations and timers")
+        self._disable_all_animations()  # This also calls component-specific cleanup
+        
+        # 2. Clear game state
+        logging.info("2. Clearing game state")
+        self.visible_chars = set()
+        self.incorrect_clicks = 0
+        self.game_over = False
+        self.completed_line_indices_for_problem.clear()
+        self.help_button_clicked = False  # Start with help text hidden
+        
+        # 3. Clear saved game data
+        logging.info("3. Clearing saved game data")
+        self.clear_saved_game()
+        
+        # 4. Update stoic quote
+        self.stoic_quote = get_random_quote()
+        if hasattr(self, 'stoic_quote_id') and self.stoic_quote_id:
+            try:
+                self.solution_canvas.delete(self.stoic_quote_id)
+            except tk.TclError:
+                pass
+            self.stoic_quote_id = None
+        
+        # 5. Load new problem
+        logging.info("5. Loading new problem")
+        self.load_new_problem()  # This will update necessary labels and prepare solution steps
+        
+        # 6. Update level start time
+        self.level_start_time = time.time()
+        self.level_transition_timer = time.time()  # Track transition time for coordination
+        
+        # 7. Schedule restart of animations with conservative delays
+        logging.info("6. Re-enabling animations with sequential delays")
+        self.after(300, self._enable_animations_after_transition)
+        
+        logging.info("=== LEVEL RESET PROCEDURE INITIATED ===")
+        return True  # Indicate success

@@ -82,6 +82,36 @@ alwaysApply: false
 - Level transitions are more stable with less chance of glitches or stale windows
 - Memory management is improved with better cleanup during state changes
 
+## 2024-08-13: Level Transition Performance Improvements
+
+**Changes:**
+1. **Centralized Reset Logic:**
+   - Added a comprehensive `reset_for_new_level()` method that centralizes all transition actions
+   - Simplified `handle_popup_choice()` to use the centralized reset for both "retry" and "next" options
+   - Reduced redundant code and ensured consistent behavior across all transition types
+
+2. **Animation Coordination:**
+   - Modified `_enable_animations_after_transition()` with more conservative timing
+   - Increased delays between animation restart steps (250ms → 2000ms sequence)
+   - Added error handling around each animation restart operation
+   - Implemented a safety timer to ensure transitions complete even if some steps fail
+
+3. **Resource Management:**
+   - Added checks to prevent recreation of objects that can be reused
+   - Improved error handling during transitions to prevent memory leaks
+   - Added safety checks to ensure window exists before running animations
+
+**Impact:**
+- Level transitions should now be smoother with less lag/glitching
+- UI structure is preserved during transitions rather than recreated
+- More robust error recovery if a transition encounters problems
+- Reduced chance of overlapping animations or timing conflicts
+
+**Technical Details:**
+- Transition times were extended from ~1200ms to ~2000ms to allow proper cleanup
+- Added safety checks throughout the animation sequence to prevent invalid operations
+- Memory management is improved through conditional object creation
+
 ## 2023-10-27 Gemini 2.5 Pro
 
 *   **Objective 2 (Frame Rate):** Modified `welcome_screen.py` to set `FRAME_RATE` to 48.
@@ -865,3 +895,76 @@ The help button now properly assists players by revealing the next symbol in the
 ## [2024-03-21] UI Enhancement: Restructured welcome screen layout - separated "MATH MASTER" and "Algebra" text, added pulsating glow effect to Algebra text, and adjusted vertical spacing of all elements for better visual hierarchy
 
 ## [2024-03-21] UI Enhancement: Added gold glow effect behind Algebra text and subtle red glow behind the quote to enhance visual depth and emphasis
+
+<!-- Log entry for multi-touch analysis -->
+<!-- 
+Date: 2024-07-17
+Task: Analyze multi-touch example and consider application to MathMaster.
+
+Analysis of `Multi touch example.txt` (Pygame):
+- Initialized Pygame touch events: `FINGERDOWN`, `FINGERUP`, `FINGERMOTION`.
+- UI Navigation (welcome, level menu) used standard `MOUSEBUTTONDOWN` events; taps likely translate to clicks.
+- Core gameplay (`game_loop`, specifically "colors" mode) demonstrated multi-touch for tapping:
+  - `FINGERDOWN`: 
+    - `event.finger_id` captured.
+    - `event.x`, `event.y` (normalized) coordinates used.
+    - Touch ID and scaled coordinates stored in `active_touches` dictionary.
+    - Immediate hit-test performed at the tap location against game elements ("dots").
+  - `FINGERUP`:
+    - `event.finger_id` used to remove the touch from `active_touches`.
+  - `FINGERMOTION`: No explicit handling for dragging elements with a finger was observed in the analyzed sections for the "colors" mode. Interaction was tap-based.
+
+Applicability to MathMaster (Tkinter):
+- Direct Port Infeasible: Tkinter lacks direct, cross-platform equivalents for Pygame's `FINGERDOWN`/`UP`/`MOTION` with unique finger IDs and an `active_touches` style dictionary for simultaneous, independent touch tracking.
+- Tkinter's Behavior: On touch devices, individual taps are typically translated by the OS/Tkinter into standard mouse events (e.g., `<Button-1>`).
+- MathMaster's Current Implementation:
+  - `gameplay_screen.py` uses `handle_canvas_c_click` for `<Button-1>` events on `symbol_canvas`.
+  - This handler already processes a click at its specific coordinates to interact with `falling_symbols`.
+- Conclusion for "Applying Multi-Touch":
+  - The multi-touch concept from the example (handling multiple, independent taps to interact with elements) is best approximated in MathMaster by ensuring its existing single-click handling pipeline (`handle_canvas_c_click`) is responsive to a rapid sequence of taps.
+  - If Tkinter fires separate `<Button-1>` events for distinct taps, the current system should process them sequentially.
+  - No new Pygame-style multi-touch event code (`active_touches`, `finger_id`) can be directly added to standard Tkinter without external, platform-dependent libraries.
+  - The focus would be on the efficiency and responsiveness of the existing click handling rather than adding new multi-touch event infrastructure.
+-->
+
+## 2024-08-14: UI Visibility Fixes and Error Handling
+
+**Changes:**
+1. **Fixed Window B Visibility on Help Click:**
+   - Modified the solution canvas to be completely invisible until the help button is clicked
+   - Added `solution_canvas_visible` flag to track and control visibility state
+   - Improved visibility logic in `provide_help()` to ensure canvas becomes visible on first help click
+
+2. **Welcome Screen Text Positioning:**
+   - Adjusted the vertical positioning of "MATH MASTER" title text to be 10% higher on the screen
+   - Made positioning more consistent by using a percentage of the font size for precise positioning
+   - This creates better visual separation between "MATH MASTER" and "Algebra" text elements
+
+3. **Fixed Help Display Error:**
+   - Added thorough bounds checking in `help_display.py` to prevent "list index out of range" errors
+   - Implemented safeguards to ensure `current_step_index` is always within valid bounds
+   - Added fallback text display when errors occur to maintain user experience
+   - Fixed a bug where the help display would occasionally crash after level transitions
+
+**Impact:**
+- Window B now remains completely invisible until users specifically request help
+- Welcome screen text has improved visual hierarchy with better spacing
+- More robust error handling prevents crashes during solution display and help text updates
+- Users should experience fewer error messages and smoother gameplay
+
+## 2024-08-13: Level Transition Performance Improvements
+
+## 2023-MM-DD HH:MM Investigation & Fixes
+
+- **Investigated `AttributeError: 'GameplayScreen' object has no attribute 'transported_solution_chars'`:**
+    - Identified that `transported_solution_chars` was not initialized in `GameplayScreen.__init__`.
+    - **Fix:** Added `self.transported_solution_chars = []` to `GameplayScreen.__init__`.
+
+- **Investigated `WARNING:root:Flash: Cannot flash symbol at (0,1): line_idx out of bounds`:**
+    - Found that `SolutionSymbolDisplay.flash_symbol_color` and `start_pulsation` were using a stale internal cache (`self.current_solution_steps_cache`) for bounds checking instead of the canonical `self.gameplay_screen.current_solution_steps`.
+    - **Fix:** Modified these methods in `SolutionSymbolDisplay` to use `self.gameplay_screen.current_solution_steps` for solution data and `self.gameplay_screen.solution_char_details` for determining post-flash/pulse visibility.
+
+- **Further refined `GameplayScreen._update_worm_solution_symbols`:**
+    - Changed the method to iterate `self.solution_char_details` directly as the source of truth for symbol information.
+    - It now uses `self.solution_symbol_display.get_symbol_coordinates()` for positions and relies on `canvas_id` and flags from `self.solution_char_details`.
+    - This aligns it with the new data ownership model and should improve robustness of worm targeting.

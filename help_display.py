@@ -93,6 +93,19 @@ class HelpDisplay:
         try:
             new_help_text = None
             
+            # Safety check for valid indices
+            if current_step_index is not None:
+                # Ensure current_step_index is valid
+                if total_steps is None or total_steps <= 0:
+                    logging.warning("Invalid total_steps value in update_help_text")
+                    total_steps = 1  # Default to prevent division by zero
+                
+                # Ensure current_step_index is within bounds
+                if current_step_index < 0:
+                    current_step_index = 0
+                if total_steps > 0 and current_step_index >= total_steps:
+                    current_step_index = total_steps - 1
+            
             # Generate help text based on step information
             if current_step_index is not None and total_steps is not None and step_text:
                 new_help_text = self.algebra_helper.get_help_for_steps(
@@ -109,6 +122,9 @@ class HelpDisplay:
                 
         except Exception as e:
             logging.error(f"Error updating help text: {e}")
+            # Set fallback text
+            self.current_help_text = "Algebra Help: Click Help button for assistance."
+            self.update_display()
             
     def show(self):
         """Show the help display."""
