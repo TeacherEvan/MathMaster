@@ -65,6 +65,7 @@ class WelcomeScreen(tk.Tk):
         # Use specific Marcus Aurelius quote instead of random
         self.stoic_quote = "If it is not right, do not do it; if it is not true, do not say it. - Marcus Aurelius"
         self.quote_pulse_phase = 0.0  # For pulsating effect
+        self.algebra_pulse_phase = 0.0  # For Algebra text pulsating effect
         self.quote_pulse_timer = None  # For tracking the pulse animation
         
         # Draw the initial content
@@ -148,6 +149,10 @@ class WelcomeScreen(tk.Tk):
                 # Update visual elements
                 self.math_symbols.update_positions()
                 
+                # Update Algebra text pulsating effect with faster and more pronounced pulsing
+                self.algebra_pulse_phase = (self.algebra_pulse_phase + 0.08) % (2 * math.pi)  # Increased speed
+                self.redraw()  # Redraw to update the pulsating effect
+                
                 # Schedule next frame
                 self.after(FRAME_DELAY, self.animate)
             except Exception as e:
@@ -177,16 +182,18 @@ class WelcomeScreen(tk.Tk):
         # Draw math symbols
         self.math_symbols.create_elements(width, height)
         
-        # Draw "MATH MASTER: Algebra" title at the top
+        # Draw "MATH MASTER" title at the top
         title_font_size = max(24, min(width // 20, 36))
+        # Double the title size by multiplying by 2
+        title_font_size = title_font_size * 2
         
         # Create title with glowing effect
         for i in range(3, 0, -1):  # Create layers for glow effect
             glow_alpha = 0.3 * i / 3
             glow_color = self._get_hex_with_alpha("#00FF00", glow_alpha)
             self.canvas.create_text(
-                width // 2, height // 4 - 10,
-                text="MATH MASTER: Algebra",
+                width // 2, height // 4 - 30,  # Moved up slightly
+                text="MATH MASTER",
                 font=("Courier New", title_font_size, "bold"),
                 fill=glow_color,
                 tags="title_glow"
@@ -194,37 +201,88 @@ class WelcomeScreen(tk.Tk):
         
         # Main title text
         self.canvas.create_text(
-            width // 2, height // 4 - 10,
-            text="MATH MASTER: Algebra",
+            width // 2, height // 4 - 30,  # Moved up slightly
+            text="MATH MASTER",
             font=("Courier New", title_font_size, "bold"),
             fill="#00FF00",  # Matrix green
             tags="title"
         )
         
-        # Add creator credit below title
+        # Draw "Algebra" text below with pulsating effect
+        algebra_font_size = int(title_font_size * 0.7)  # 70% of title size
+        pulse_intensity = 0.5 * (math.sin(self.algebra_pulse_phase) + 1) / 2  # Increased range to 0 to 0.5
+        algebra_alpha = 0.3 + pulse_intensity  # Base 30% opacity + pulsating effect (more transparent)
+        
+        # Create gold glow effect behind Algebra text
+        for i in range(5, 0, -1):  # Increased layers for more pronounced glow
+            glow_alpha = (algebra_alpha * 0.4) * i / 5  # Reduced base alpha for gold glow
+            glow_color = self._get_hex_with_alpha("#FFD700", glow_alpha)  # Gold color
+            self.canvas.create_text(
+                width // 2, height // 4 + 30,
+                text="Algebra",
+                font=("Courier New", algebra_font_size + (i * 2), "bold"),  # Increasing size for each layer
+                fill=glow_color,
+                tags="algebra_gold_glow"
+            )
+        
+        # Create Algebra text with pulsating glow
+        for i in range(3, 0, -1):
+            glow_alpha = algebra_alpha * i / 3
+            glow_color = self._get_hex_with_alpha("#00FF00", glow_alpha)
+            self.canvas.create_text(
+                width // 2, height // 4 + 30,  # Positioned below MATH MASTER
+                text="Algebra",
+                font=("Courier New", algebra_font_size, "bold"),
+                fill=glow_color,
+                tags="algebra_glow"
+            )
+        
+        # Main Algebra text
+        self.canvas.create_text(
+            width // 2, height // 4 + 30,  # Positioned below MATH MASTER
+            text="Algebra",
+            font=("Courier New", algebra_font_size, "bold"),
+            fill=self._get_hex_with_alpha("#00FF00", algebra_alpha),
+            tags="algebra"
+        )
+        
+        # Add creator credit below Algebra
         original_font_size = max(12, min(width // 40, 20))
         credit_font_size = original_font_size // 2  # Exactly 50% of original size
         self.canvas.create_text(
-            width // 2, height // 4 + 30,
+            width // 2, height // 4 + 80,  # Moved down to accommodate Algebra text
             text="Created By Teacher Evan (Ewaldt Botha)",
             font=("Helvetica", credit_font_size, "bold italic"),
             fill=self._get_hex_with_alpha("#88FF88", 0.5),  # 50% transparent
             tags="creator_credit"
         )
         
-        # Draw stoic quote in the center 
+        # Draw stoic quote in the center (moved down slightly)
         quote_font_size = max(14, min(width // 35, 24))
         quote_font_size = int(quote_font_size * 0.9)  # 10% smaller as requested
-        # Double the quote size by multiplying by 2
         quote_font_size = quote_font_size * 2
         quote_width = width * 0.8  # Use 80% of the width for the quote
         
+        # Create red glow effect behind the quote
+        for i in range(4, 0, -1):
+            glow_alpha = 0.15 * i / 4  # Subtle red glow
+            glow_color = self._get_hex_with_alpha("#FF0000", glow_alpha)
+            self.canvas.create_text(
+                width // 2, height // 2 + 20,
+                text=self.stoic_quote,
+                font=("Helvetica", quote_font_size + (i * 2), "italic"),
+                fill=glow_color,
+                width=quote_width,
+                justify=tk.CENTER,
+                tags="quote_red_glow"
+            )
+        
         # Create the quote text without the golden glow
         quote_id = self.canvas.create_text(
-            width // 2, height // 2,
+            width // 2, height // 2 + 20,  # Moved down slightly
             text=self.stoic_quote,
             font=("Helvetica", quote_font_size, "italic"),
-            fill=self._get_hex_with_alpha("#FFD700", 0.7),  # Gold with 30% transparency
+            fill=self._get_hex_with_alpha("#FFD700", 0.35),  # Gold with 65% transparency
             width=quote_width,
             justify=tk.CENTER,
             tags="stoic_quote"
@@ -233,7 +291,7 @@ class WelcomeScreen(tk.Tk):
         # Add "Click to continue" text below the quote
         instruction_font_size = max(10, min(width // 60, 16))
         self.canvas.create_text(
-            width // 2, height // 2 + 100,
+            width // 2, height // 2 + 120,  # Moved down to maintain spacing
             text="Click to continue",
             font=("Helvetica", instruction_font_size),
             fill="#AAFFAA",

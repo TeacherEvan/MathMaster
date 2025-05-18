@@ -808,3 +808,7 @@ The help button now properly assists players by revealing the next symbol in the
 - Fixed an error with quote_pulse_timer where it was being treated as a string
 - Removed the progress bar that was showing timeout progress
 - Removed the _animate_quote_glow method that was causing errors
+
+## [2024-03-21] UI Enhancement: Restructured welcome screen layout - separated "MATH MASTER" and "Algebra" text, added pulsating glow effect to Algebra text, and adjusted vertical spacing of all elements for better visual hierarchy
+
+## [2024-03-21] UI Enhancement: Added gold glow effect behind Algebra text and subtle red glow behind the quote to enhance visual depth and emphasis
