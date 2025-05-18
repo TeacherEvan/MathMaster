@@ -217,6 +217,16 @@ class WelcomeScreen(tk.Tk):
             tags="title"
         )
         
+        # Add creator credit below title
+        credit_font_size = max(12, min(width // 40, 20))
+        self.canvas.create_text(
+            width // 2, height // 4 + 30,
+            text="Created By Teacher Evan (Ewaldt Botha)",
+            font=("Helvetica", credit_font_size, "bold italic"),
+            fill="#88FF88",  # Lighter green for subtitle
+            tags="creator_credit"
+        )
+        
         # Draw stoic quote in the center 
         quote_font_size = max(14, min(width // 35, 24))
         quote_width = width * 0.8  # Use 80% of the width for the quote

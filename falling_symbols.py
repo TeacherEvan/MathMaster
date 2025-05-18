@@ -19,6 +19,7 @@ class FallingSymbols:
         self.animation_after_id = None  # For managing animation loop
         self.symbols_list = symbols_list or list("0123456789Xx +-=÷×*/()")
         self.game_over = False
+        self.generation_rate = 0.60  # 60% chance to generate a new symbol
         
     def animate_falling_symbols(self):
         """Manages the animation loop for falling symbols"""
@@ -71,8 +72,8 @@ class FallingSymbols:
                     pass
         self.falling_symbols_on_screen = next_symbols
 
-        # Add new symbols with 60% chance
-        if random.random() < 0.60:
+        # Add new symbols based on generation rate
+        if random.random() < self.generation_rate:
             char = random.choice(self.symbols_list)
             x_pos = random.randint(20, canvas_width - 20)
             
@@ -213,3 +214,37 @@ class FallingSymbols:
     def set_symbols_list(self, symbols_list):
         """Update the list of symbols that can appear"""
         self.symbols_list = symbols_list 
+
+    def reduce_generation_rate(self):
+        """Slow down the symbol generation rate during level completion.
+        This is called when a level is complete to gradually reduce visual clutter
+        without abruptly stopping all animations.
+        """
+        # We don't immediately stop the animation, but make it generate fewer symbols
+        # This creates a nice visual effect for level completion
+        try:
+            # Reduce the generation rate to 10%
+            self.generation_rate = 0.10
+            
+            # Clear most existing symbols but keep a few for visual effect
+            if len(self.falling_symbols_on_screen) > 5:
+                # Keep just a few symbols
+                keep_indices = random.sample(range(len(self.falling_symbols_on_screen)), 5)
+                for i in sorted(range(len(self.falling_symbols_on_screen)), reverse=True):
+                    if i not in keep_indices:
+                        symbol_id = self.falling_symbols_on_screen[i].get('id')
+                        if symbol_id and self.canvas.winfo_exists():
+                            try:
+                                self.canvas.delete(symbol_id)
+                            except tk.TclError:
+                                pass
+            
+                # Update the list to only keep selected symbols
+                self.falling_symbols_on_screen = [self.falling_symbols_on_screen[i] for i in keep_indices]
+            
+            logging.info("Reduced falling symbols generation rate for level completion")
+        except Exception as e:
+            logging.error(f"Error reducing symbol generation rate: {e}")
+        
+        # The generation rate reduction happens naturally since update_falling_symbols
+        # will now have a reduced chance to generate new symbols 

@@ -1305,6 +1305,33 @@ class WormAnimation:
         else:
             logging.info(f"Worm clicked, but max worms ({self.max_worms}) reached. No new worm added.")
 
+    def reset_for_new_problem(self):
+        """Reset worm animation state for a new problem without destroying objects"""
+        try:
+            # Stop animation first
+            self.animation_running = False
+            
+            # Clear any pending timers
+            self.transport_timer_id = None
+            
+            # Clear all existing worms safely
+            self.clear_worms()
+            
+            # Reset internal state
+            self.update_solution_symbols([])
+            self.targeted_symbol_id = None
+            self.targeting_worm_id = None
+            
+            # Reset counters and flags
+            self.worm_count = 0
+            self.next_worm_id = 1
+            
+            logging.info("WormAnimation reset for new problem")
+        except Exception as e:
+            logging.error(f"Error resetting worm animation: {e}")
+            
+        return self  # Allow method chaining
+
 # For testing the animation standalone
 if __name__ == "__main__":
     root = tk.Tk()

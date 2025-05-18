@@ -392,6 +392,11 @@ class SymbolTeleportManager:
     def _handle_correct_teleport(self, symbol_id: int, end_pos: Tuple[float, float], 
                                is_left_side: bool) -> None:
         """Handle the correct symbol teleportation"""
+        # Check if end_pos is None
+        if end_pos is None:
+            logging.error(f"Cannot handle teleport: end_pos is None for symbol_id {symbol_id}")
+            return
+        
         # Create destination portal
         self.portal_effect_b.create_portal(end_pos[0], end_pos[1])
         

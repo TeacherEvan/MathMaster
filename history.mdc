@@ -3,6 +3,32 @@ description:
 globs: 
 alwaysApply: false
 ---
+## 2024-08-11: Fixed GameplayScreen Critical Errors
+
+**Issue:** Several critical errors occurred when launching the game and selecting a level:
+1. `'GameplayScreen' object has no attribute 'stoic_quote'` error in `add_stoic_quote_watermark()`
+2. `'GameplayScreen' object has no attribute '_ensure_fullscreen'` error during initialization
+3. `'GameplayScreen' object has no attribute '_is_symbol_match'` error when clicking on symbols
+4. Multiple errors cascading from these issues causing symbols to be unresponsive
+
+**Fixes:**
+1. Fixed `stoic_quote` initialization:
+   - Ensured early initialization in `__init__` before it's used by other methods
+   - Fixed formatting issues in the attribute declarations
+   - Removed redundant initialization that was placed after worm animation setup
+2. Added the missing methods:
+   - Implemented `_ensure_fullscreen()` method for window sizing
+   - Implemented `_is_symbol_match()` method with Unicode normalization for reliable character matching
+   - Added `get_hex_with_alpha()` method for generating transparent colors
+3. Resolved cascading errors:
+   - Ensured proper method presence to prevent error propagation
+   - Fixed formatting issues that may have contributed to logic flow problems
+
+**Impact:** These fixes resolve the immediate errors that prevented gameplay after level selection. Users can now:
+- See solution steps properly rendered in Window B with stoic quote watermark
+- Match and click on symbols to solve problems
+- Have the window correctly sized in fullscreen mode
+
 ## 2023-10-27 Gemini 2.5 Pro
 
 *   **Objective 2 (Frame Rate):** Modified `welcome_screen.py` to set `FRAME_RATE` to 48.
@@ -623,3 +649,88 @@ The user has identified themselves as a "lazy reader" and has requested that fut
    - Ensured all referenced methods exist and are properly implemented
 
 These changes ensure the game can properly start levels from the level selection screen without errors and maintain proper game state.
+
+## 2025-05-18 - Added Help Button Explanation Feature
+
+Added a contextual help system that displays algebra rule explanations based on the current problem state:
+
+1. Created AlgebraHelper class in algebra_helper.py that provides context-aware guidance
+2. Added HelpDisplay class in help_display.py to render help text below the help button in Window B
+3. Integrated the help system with the GameplayScreen
+4. Help text is automatically updated when:
+   - The help button is clicked
+   - A new character is revealed in the solution
+5. Text is displayed in italic format and summarizes the algebra rule relevant to the current step
+
+This enhancement improves the educational value of the game by providing just-in-time explanations of algebra concepts as the player works through problems.
+
+## 2025-05-18 - Fixed Help Button Explanation Feature
+
+Fixed issues with the help button explanation feature:
+
+1. Fixed initialization timing to ensure proper setup after solution canvas is ready
+2. Updated canvas references to use the correct solution canvas in Window B
+3. Added robust error handling to prevent crashes when help display isn't available
+4. Adjusted positioning to display text in a more visible location
+5. Improved logging to better track help functionality
+
+These fixes ensure the algebra rule explanations display correctly when the help button is clicked and as the player progresses through the problem.
+
+## 2025-05-18 - Added Missing FallingSymbols Methods
+
+Fixed an issue with the level completion animation:
+
+1. Added the missing `reduce_generation_rate()` method to the FallingSymbols class
+2. Added a generation rate attribute to control symbol spawn frequency
+3. Modified symbol generation logic to respect the reduced rate during level completion
+4. Added error handling to prevent crashes during level transitions
+
+This fix ensures the game properly transitions between levels with a smooth visual effect rather than abruptly stopping animations.
+
+## 2025-05-18 - Added Missing Success Message Method
+
+Fixed an issue with the level completion process:
+
+1. Added the missing `show_success_message()` method to the GameplayScreen class
+2. Added a green glowing "Level Complete!" text visual when a level is finished
+3. Implemented proper cleanup of the success message after display
+4. Added detailed error handling to prevent crashes during success message display
+
+This fix ensures players receive proper visual feedback when successfully completing a level, providing a more satisfying gameplay experience.
+
+## 2025-05-18 - CRITICAL FIX: Help Button Functionality
+
+Fixed the help button to perform both required actions:
+
+1. Now reveals the next character in the current solution step when clicked
+2. Also shows contextual algebra rule explanations related to the current step
+3. Fixed button color to be green for consistency
+4. Made help display initially invisible and only show when help is requested
+5. Added better error handling for edge cases
+
+The help button now properly assists players by revealing the next symbol in the solution and providing educational content about the algebra rules being applied.
+
+## 2025-05-06: Redesigned Level Complete Popup with Matrix Theme
+
+**Issue:** The green level complete artwork display was visually unappealing and not well-aligned with the game's Matrix theme.
+
+**Changes:**
+1. **Complete Matrix-themed Redesign:**
+   - Replaced static popup with an animated, Matrix-style display
+   - Added flowing "digital rain" background with animated green characters
+   - Implemented dynamic particle effects around buttons
+   - Created pulsing glow effects for titles and UI elements
+
+2. **Interactive Visual Elements:**
+   - Title text now pulses with a subtle green glow
+   - Subtitle text fades in gracefully
+   - Floating particles create ambient glow around interactive buttons
+   - Visual elements are now properly sized and positioned for different window dimensions
+
+3. **Technical Improvements:**
+   - Optimized animations with proper cleanup and resource management
+   - Added animation state tracking to prevent memory leaks and performance issues
+   - Enhanced visual consistency with the game's Matrix theme using a cohesive color palette
+   - Improved exit handling with Escape key support
+
+**Impact:** The level complete popup now provides a more cohesive, visually appealing experience that properly matches the Matrix aesthetic of the rest of the game. Animations enhance user engagement while maintaining the game's distinctive cyberpunk visual identity.
