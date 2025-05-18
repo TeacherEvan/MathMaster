@@ -28,24 +28,29 @@ class LevelSelectScreen(tk.Toplevel):
         title_label = tk.Label(
             self,
             text = "Select Difficulty Level",
-            font = ("Courier New", 24, "bold"),
+            font = ("Courier New", 36, "bold"),  # Increased font size
             fg = "#00FF00", # Green text
             bg = "#000000"  # Black background
         )
-        title_label.pack(pady = 30)
+        title_label.pack(pady = 40)  # Increased padding
+
+        # --- Center content with main frame ---
+        main_frame = tk.Frame(self, bg="#000000")
+        main_frame.place(relx=0.5, rely=0.5, anchor="center")  # Center the frame
 
         # --- Button Frame ---
-        button_frame = tk.Frame(self, bg="#000000")
-        button_frame.pack(pady=20, fill="x", padx=50)
+        button_frame = tk.Frame(main_frame, bg="#000000")
+        button_frame.pack(pady=30)  # Increased padding
 
         # --- Level Buttons ---
-        # Button Style Configuration (Optional: use ttk for better styling)
-        button_font = ("Courier New", 14, "bold")
+        # Button Style Configuration (increased size)
+        button_font = ("Courier New", 24, "bold")  # Increased font size
         button_bg = "#001800" # Dark green background
         button_fg = "#00AA00" # Lighter green text
         button_active_bg = "#003300"
         button_active_fg = "#00FF00"
-        button_width = 25 # Fixed width for alignment
+        button_width = 30  # Increased width 
+        button_height = 3  # Added height
 
         # Define levels
         # USER PREFERENCE: The third difficulty level MUST be displayed as "Medium too".
@@ -66,24 +71,25 @@ class LevelSelectScreen(tk.Toplevel):
                 activebackground = button_active_bg,
                 activeforeground = button_active_fg,
                 width = button_width,
+                height = button_height,  # Added height
                 relief = tk.RAISED,
-                bd = 2,
+                bd = 3,  # Increased border thickness
                 command=lambda lvl=internal_level: self.start_level(lvl)
             )
-            button.pack(pady=10) # Add padding between buttons
+            button.pack(pady=20)  # Increased padding between buttons
 
         # --- Back Button ---
         back_button = tk.Button(
             self,
             text="< Back to Welcome",
-            font=("Courier New", 10),
+            font=("Courier New", 14),  # Increased font size
             bg="#111111",
             fg="#CCCCCC",
             activebackground="#333333",
             activeforeground="#FFFFFF",
             command=self.go_back
         )
-        back_button.pack(pady=20, side=tk.BOTTOM)
+        back_button.pack(pady=30, side=tk.BOTTOM)
 
         logging.info("Level Select Screen opened.")
 

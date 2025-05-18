@@ -29,6 +29,59 @@ alwaysApply: false
 - Match and click on symbols to solve problems
 - Have the window correctly sized in fullscreen mode
 
+## 2024-08-12: UI Improvements for Welcome Screen and Level Select
+
+**Changes to Welcome Screen:**
+1. Enhanced text visuals with better depth and readability:
+   - Replaced red glow behind quote with a softer cloudy shadow effect
+   - Added black outlines to all text elements (title, algebra text, quote, and instructions)
+   - Created more defined text edges with multiple shadow layers
+   - Improved visual hierarchy with balanced contrast between elements
+
+**Changes to Level Select Screen:**
+1. Improved button size and positioning:
+   - Increased level selection buttons size (width: 30, height: 3)
+   - Enlarged button font from 14pt to 24pt for better readability
+   - Centered all content in the middle of the screen
+   - Increased padding between elements for a more spacious layout
+2. Enhanced overall visual hierarchy:
+   - Enlarged title font from 24pt to 36pt
+   - Increased back button font from 10pt to 14pt
+   - Added more vertical spacing between elements
+   - Increased border thickness around buttons from 2px to 3px
+
+**Impact:** These UI improvements create a more visually appealing and user-friendly experience:
+- Text is more readable with improved contrast and definition
+- Larger buttons are easier to target, especially on touch interfaces
+- Centered layout creates better visual balance and focus
+- Consistent styling enhances the professional appearance of the application
+
+## 2024-08-13: Window B UI and Level Transition Improvements
+
+**Changes to Window B (Solution Display):**
+1. Removed green border around Window B text box:
+   - Changed frame border thickness from 2px to 0px
+   - Changed relief style from SUNKEN to FLAT for a cleaner appearance
+   - Modified background and highlight settings for better visual integration
+
+2. Made Window B solution display invisible until help button is clicked:
+   - Added a help_button_clicked flag to track when to show content
+   - Modified draw_solution_lines to only render when help button has been used
+   - Updated provide_help method to explicitly trigger solution drawing on first click
+   - Reset the visibility state during level transitions for consistency
+
+3. Improved level transitions with better cleanup:
+   - Added more thorough cleanup of worm-symbol interaction data during transitions
+   - Reset help_button_clicked flag during transitions to ensure consistent behavior
+   - Added forced garbage collection during transitions to prevent memory issues
+   - Ensured animations are properly reset during level changes
+
+**Impact:** These changes address several important issues:
+- Window B has a cleaner, more minimal appearance without the green border
+- Solution text is hidden until the player actively seeks help, reducing immediate visual complexity
+- Level transitions are more stable with less chance of glitches or stale windows
+- Memory management is improved with better cleanup during state changes
+
 ## 2023-10-27 Gemini 2.5 Pro
 
 *   **Objective 2 (Frame Rate):** Modified `welcome_screen.py` to set `FRAME_RATE` to 48.

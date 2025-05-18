@@ -451,6 +451,9 @@ class GameplayScreen(tk.Toplevel):
         
         # Stats manager for tracking performance (initialize as None)
         self.stats_manager = None
+        
+        # Track if help button has been clicked
+        self.help_button_clicked = False
 
         # --- Layout ---
         self.create_layout() # This creates self.solution_canvas
@@ -554,9 +557,8 @@ class GameplayScreen(tk.Toplevel):
                 y=120                  # Position below the help button
             )
             self.help_display.current_help_text = "Click HELP button for algebra assistance" 
-            # Don't call show() yet as canvas might not be fully ready
-            # We'll schedule it after a delay
-            self.after(800, self._ensure_help_display_visible)
+            # Don't show help display or text until help button is clicked
+            # self.after(800, self._ensure_help_display_visible) # Comment out to hide initially
         except Exception as e:
             logging.error(f"Error during initial help display setup: {e}")
             # Fall back to delayed initialization if direct initialization fails
@@ -1166,7 +1168,8 @@ class GameplayScreen(tk.Toplevel):
         sep1.grid(row=0, column=1, sticky="ns")
 
         # --- Window B (Solution Steps) ---
-        self.frame_b = tk.Frame(self, bg="#FFFFFF", bd=2, relief=tk.SUNKEN)
+        # Modified: Changed bd to 0, removed the green border, made bg white
+        self.frame_b = tk.Frame(self, bg="#FFFFFF", bd=0, relief=tk.FLAT)
         self.frame_b.grid(row=0, column=2, sticky="nsew", padx=5, pady=5)
         self.frame_b.grid_columnconfigure(0, weight=1)
         
@@ -1189,8 +1192,12 @@ class GameplayScreen(tk.Toplevel):
             logging.error(f"Failed to create help button: {e}")
 
         # Canvas for Solution Lines
-        self.solution_canvas = tk.Canvas(self.frame_b, bg="#FFFFFF", highlightthickness=0)
+        # Modified: Set highlightthickness to 0, highlightbackground to match bg
+        self.solution_canvas = tk.Canvas(self.frame_b, bg="#FFFFFF", highlightthickness=0, highlightbackground="#FFFFFF")
         self.solution_canvas.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+        
+        # Set a flag to track if help button has been clicked
+        self.help_button_clicked = False
 
         # --- Separator 2 ---
         sep2 = tk.Frame(self, width=2, bg="#00FF00")
@@ -1428,6 +1435,14 @@ class GameplayScreen(tk.Toplevel):
         It ensures data is passed correctly.
         """
         try:
+            # Skip drawing if help button hasn't been clicked yet
+            if not hasattr(self, 'help_button_clicked') or not self.help_button_clicked:
+                logging.info("Skipping solution lines drawing - help button not clicked yet.")
+                # Still call the callback to prevent any hanging processes
+                if hasattr(self, 'drawing_complete_callback') and callable(self.drawing_complete_callback):
+                    self.drawing_complete_callback()
+                return
+            
             # Notify worm animation about canvas redraw to clear its state related to old symbol IDs/glows
             # This should happen BEFORE new symbols are drawn and new data is sent to worms.
             if hasattr(self, 'worm_animation') and self.worm_animation:
@@ -2431,6 +2446,9 @@ class GameplayScreen(tk.Toplevel):
         logging.info("HELP BUTTON CLICKED: Starting help processing")
         
         try:
+            # Set the flag to true since help button was clicked
+            self.help_button_clicked = True
+            
             # STEP 1: Find the next character to reveal
             valid_positions = self.find_next_required_char()
             if valid_positions:
@@ -2442,7 +2460,12 @@ class GameplayScreen(tk.Toplevel):
                 logging.info(f"Help button revealing character at position ({line_idx}, {char_idx})")
                 self.reveal_char(line_idx, char_idx)
             
-            # STEP 2: Show explanatory text (existing functionality)
+            # STEP 2: Draw solution lines if this is the first help click
+            # This will make the text box visible only after help is clicked
+            if hasattr(self, 'solution_symbol_display') and self.solution_symbol_display:
+                self.draw_solution_lines()
+            
+            # STEP 3: Show explanatory text (existing functionality)
             # Force creation of help display if it doesn't exist
             if not hasattr(self, 'help_display') or self.help_display is None:
                 logging.info("Help display not found - creating it now")
@@ -2789,6 +2812,25 @@ class GameplayScreen(tk.Toplevel):
         # Restart auto-save
         self.schedule_auto_save()
         
+        # Reset help button flag to ensure window B is hidden until help button is clicked
+        self.help_button_clicked = False
+        
+        # Reset any worm and symbol interaction data
+        self.currently_targeted_by_worm = None
+        self.solution_symbols_data_for_worms = []
+        self.transported_by_worm_symbols = []
+        
+        # Ensure all animations are properly reset and initialized
+        if hasattr(self, 'worm_animation') and self.worm_animation:
+            self.worm_animation.reset_for_new_problem()
+            
+        # Force garbage collection to clean up memory
+        try:
+            import gc
+            gc.collect()
+        except Exception:
+            pass
+            
         logging.info("Level transition complete - normal operation resumed")
 
     def teleport_symbol(self, symbol_id, start_pos, end_pos, is_correct=False):

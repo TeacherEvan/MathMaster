@@ -187,7 +187,7 @@ class WelcomeScreen(tk.Tk):
         # Double the title size by multiplying by 2
         title_font_size = title_font_size * 2
         
-        # Create title with glowing effect
+        # Create title with glowing effect and black outline
         for i in range(3, 0, -1):  # Create layers for glow effect
             glow_alpha = 0.3 * i / 3
             glow_color = self._get_hex_with_alpha("#00FF00", glow_alpha)
@@ -199,9 +199,19 @@ class WelcomeScreen(tk.Tk):
                 tags="title_glow"
             )
         
+        # Main title text with black outline for depth
+        for offset in [(1, 1), (-1, 1), (1, -1), (-1, -1)]:
+            self.canvas.create_text(
+                width // 2 + offset[0], height // 4 - 30 + offset[1],
+                text="MATH MASTER",
+                font=("Courier New", title_font_size, "bold"),
+                fill="#000000",  # Black outline
+                tags="title_outline"
+            )
+        
         # Main title text
         self.canvas.create_text(
-            width // 2, height // 4 - 30,  # Moved up slightly
+            width // 2, height // 4 - 30,
             text="MATH MASTER",
             font=("Courier New", title_font_size, "bold"),
             fill="#00FF00",  # Matrix green
@@ -225,16 +235,14 @@ class WelcomeScreen(tk.Tk):
                 tags="algebra_gold_glow"
             )
         
-        # Create Algebra text with pulsating glow
-        for i in range(3, 0, -1):
-            glow_alpha = algebra_alpha * i / 3
-            glow_color = self._get_hex_with_alpha("#00FF00", glow_alpha)
+        # Black outline for Algebra text
+        for offset in [(1, 1), (-1, 1), (1, -1), (-1, -1)]:
             self.canvas.create_text(
-                width // 2, height // 4 + 30,  # Positioned below MATH MASTER
+                width // 2 + offset[0], height // 4 + 30 + offset[1],
                 text="Algebra",
                 font=("Courier New", algebra_font_size, "bold"),
-                fill=glow_color,
-                tags="algebra_glow"
+                fill="#000000",  # Black outline
+                tags="algebra_outline"
             )
         
         # Main Algebra text
@@ -263,23 +271,43 @@ class WelcomeScreen(tk.Tk):
         quote_font_size = quote_font_size * 2
         quote_width = width * 0.8  # Use 80% of the width for the quote
         
-        # Create red glow effect behind the quote
-        for i in range(4, 0, -1):
-            glow_alpha = 0.15 * i / 4  # Subtle red glow
-            glow_color = self._get_hex_with_alpha("#FF0000", glow_alpha)
+        # Create cloudy shadow effect behind the quote (replacing red glow)
+        for i in range(5, 0, -1):
+            # Use dark gray to black colors for cloudy shadow
+            shadow_alpha = 0.15 * i / 5  
+            shadow_offset = i * 2  # Increasing offset for each layer
+            shadow_color = self._get_hex_with_alpha("#333333", shadow_alpha)
+            
+            # Create multiple offset shadows for cloudy effect
+            for offset_x, offset_y in [(shadow_offset, shadow_offset), 
+                                       (-shadow_offset, shadow_offset),
+                                       (shadow_offset, -shadow_offset),
+                                       (-shadow_offset, -shadow_offset)]:
+                self.canvas.create_text(
+                    width // 2 + offset_x, height // 2 + 20 + offset_y,
+                    text=self.stoic_quote,
+                    font=("Helvetica", quote_font_size, "italic"),
+                    fill=shadow_color,
+                    width=quote_width,
+                    justify=tk.CENTER,
+                    tags="quote_shadow"
+                )
+        
+        # Black outline for quote text for better definition
+        for offset in [(1, 1), (-1, 1), (1, -1), (-1, -1), (0, 2), (2, 0), (-2, 0), (0, -2)]:
             self.canvas.create_text(
-                width // 2, height // 2 + 20,
+                width // 2 + offset[0], height // 2 + 20 + offset[1],
                 text=self.stoic_quote,
-                font=("Helvetica", quote_font_size + (i * 2), "italic"),
-                fill=glow_color,
+                font=("Helvetica", quote_font_size, "italic"),
+                fill="#000000",
                 width=quote_width,
                 justify=tk.CENTER,
-                tags="quote_red_glow"
+                tags="quote_outline"
             )
         
-        # Create the quote text without the golden glow
+        # Create the quote text 
         quote_id = self.canvas.create_text(
-            width // 2, height // 2 + 20,  # Moved down slightly
+            width // 2, height // 2 + 20,
             text=self.stoic_quote,
             font=("Helvetica", quote_font_size, "italic"),
             fill=self._get_hex_with_alpha("#FFD700", 0.35),  # Gold with 65% transparency
@@ -290,8 +318,19 @@ class WelcomeScreen(tk.Tk):
         
         # Add "Click to continue" text below the quote
         instruction_font_size = max(10, min(width // 60, 16))
+        
+        # Add black outline to instruction text
+        for offset in [(1, 1), (-1, 1), (1, -1), (-1, -1)]:
+            self.canvas.create_text(
+                width // 2 + offset[0], height // 2 + 120 + offset[1],
+                text="Click to continue",
+                font=("Helvetica", instruction_font_size),
+                fill="#000000",
+                tags="instruction_outline"
+            )
+        
         self.canvas.create_text(
-            width // 2, height // 2 + 120,  # Moved down to maintain spacing
+            width // 2, height // 2 + 120,
             text="Click to continue",
             font=("Helvetica", instruction_font_size),
             fill="#AAFFAA",
