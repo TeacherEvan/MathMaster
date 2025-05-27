@@ -8,7 +8,12 @@ import json
 import os
 import traceback # Added import
 from src.ui_components.feedback_manager import FeedbackManager # Added import
-from lock_animation import LockAnimation # Import the lock animation class
+try:
+    from lock_animation_improved import LockAnimation # Import the improved lock animation class
+    logging.info("Using improved lock animation")
+except ImportError:
+    from lock_animation import LockAnimation # Fallback to original lock animation class
+    logging.info("Using original lock animation (improved version not found)")
 from error_animation import ErrorAnimation # Import the new error animation class
 from falling_symbols import FallingSymbols # Import the falling symbols manager
 from WormsWindow_B import WormAnimation # Import the worm animation class
@@ -386,6 +391,9 @@ class GameplayScreen(tk.Toplevel):
         # Auto-save directory - needs to be initialized before clear_saved_game can be called
         self.save_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "saves")
         os.makedirs(self.save_dir, exist_ok=True)
+        
+        # Timer tracking for better cleanup during transitions
+        self.active_timers = set()  # Track all active after() calls
 
         # Ensure a fresh start by clearing any saved game for this level upon initialization
         # This means launching a level from welcome_screen will always be a new problem.
@@ -732,6 +740,19 @@ class GameplayScreen(tk.Toplevel):
             )
         # Worm animation scheduling is handled internally by WormAnimation class
 
+        # Check if the transported symbol was the one targeted by player's help action
+        if self.help_system and hasattr(self.help_system, 'currently_targeted_char_details'):
+            if self.help_system.currently_targeted_char_details and \
+               self.help_system.currently_targeted_char_details['line_idx'] == transported_line_idx and \
+               self.help_system.currently_targeted_char_details['char_idx'] == transported_char_idx:
+                logging.info(f"Symbol targeted by help system was transported by a worm. Resetting help target.")
+                self.help_system.reset_help_target() # Reset help if the target is gone
+        
+        # self._update_score_display() # TODO: Implement or verify this method / Commented out due to AttributeError
+
+        # Update worm animation with the new state of symbols
+        self._update_worm_solution_symbols() # Refresh worm's view of symbols
+
     def handle_symbol_targeted_for_steal(self, worm_id, symbol_data):
         """Callback from WormAnimation when a worm targets a symbol for stealing."""
         self.currently_targeted_by_worm = {
@@ -760,7 +781,7 @@ class GameplayScreen(tk.Toplevel):
     def _update_worm_solution_symbols(self, initial_call=False):
         """Update the list of solution symbols for worm interaction"""
         # Skip updates if window doesn't exist or during transitions
-        if not self.winfo_exists() or self.in_level_transition: # Check in_level_transition flag HERE
+        if not self.winfo_exists() or getattr(self, 'in_level_transition', False):
             logging.info("Skipping worm symbols update: window gone or in transition.")
             return
             
@@ -769,10 +790,10 @@ class GameplayScreen(tk.Toplevel):
             self._worm_update_retries = 0
             
         # Limit excessive retries to avoid CPU overload
-        if self._worm_update_retries > 5:
+        if self._worm_update_retries > 3:  # Reduced from 5 to 3
             logging.warning(f"Too many worm update retries ({self._worm_update_retries}), delaying next update")
-            if self.winfo_exists(): # Check again before scheduling
-                self.after(2000, self._reset_worm_update_retries)
+            if self.winfo_exists() and not getattr(self, 'in_level_transition', False):
+                self.after(3000, self._reset_worm_update_retries)  # Increased delay
             return
             
         # Increment retry counter
@@ -870,14 +891,14 @@ class GameplayScreen(tk.Toplevel):
             self._worm_update_retries = 0
             
             # Only reschedule if not an initial call AND not in transition anymore
-            if not initial_call and self.winfo_exists() and not self.in_level_transition:
-                self.after(2000, lambda: self._update_worm_solution_symbols(initial_call=False))
+            if not initial_call and self.winfo_exists() and not getattr(self, 'in_level_transition', False):
+                self.after(3000, lambda: self._update_worm_solution_symbols(initial_call=False))  # Increased from 2000 to 3000
                 
         except Exception as e:
             logging.error(f"Error in _update_worm_solution_symbols: {e}")
             # Only reschedule if not an initial call AND not in transition anymore
-            if not initial_call and self.winfo_exists() and not self.in_level_transition:
-                self.after(2000, lambda: self._update_worm_solution_symbols(initial_call=False))
+            if not initial_call and self.winfo_exists() and not getattr(self, 'in_level_transition', False):
+                self.after(3000, lambda: self._update_worm_solution_symbols(initial_call=False))  # Increased from 2000 to 3000
     
     def _check_if_step_complete(self, line_idx):
         """Checks if all characters in a given solution step line are visible."""
@@ -2670,10 +2691,17 @@ class GameplayScreen(tk.Toplevel):
             self.teleport_manager.clear_pending_operations()
             logging.info("Teleport manager operations cleared")
         
-        # Placeholder for cancelling other specific GameplayScreen timers if they exist and are tracked
-        # Example: if self.some_other_timer_id: self.after_cancel(self.some_other_timer_id)
+        # Cancel any tracked timers
+        if hasattr(self, 'active_timers'):
+            for timer_id in list(self.active_timers):
+                try:
+                    self.after_cancel(timer_id)
+                    cancelled_timers += 1
+                except Exception as e:
+                    logging.warning(f"Error cancelling tracked timer {timer_id}: {e}")
+            self.active_timers.clear()
         
-        logging.info(f"Explicitly cancelled known timers. Total (if auto_save was active): {cancelled_timers}")
+        logging.info(f"Explicitly cancelled known timers. Total cancelled: {cancelled_timers}")
             
         # Force garbage collection to clean up memory
         try:
@@ -2706,19 +2734,19 @@ class GameplayScreen(tk.Toplevel):
         # The ordering and timing is crucial for preventing overlap
         schedule = [
             # First update the solution display with current data
-            (250, lambda: self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars) if hasattr(self, 'solution_symbol_display') else None),
+            (400, lambda: self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars) if hasattr(self, 'solution_symbol_display') else None),
             
             # Then add the stoic quote watermark after solution display is updated
-            (600, lambda: self.add_stoic_quote_watermark()),
+            (800, lambda: self.add_stoic_quote_watermark()),
             
             # Reset worm system but don't start animation yet
-            (1000, lambda: self._reset_worm_system()),
+            (1200, lambda: self._reset_worm_system()),
             
             # Start falling symbols animation in window C
-            (1500, lambda: self.falling_symbols.start_animation() if hasattr(self, 'falling_symbols') and self.falling_symbols else None),
+            (1800, lambda: self.falling_symbols.start_animation() if hasattr(self, 'falling_symbols') and self.falling_symbols else None),
             
             # Finally, complete the transition process
-            (2000, lambda: self._finish_transition())
+            (2400, lambda: self._finish_transition())
         ]
         
         # Schedule each operation with proper delay and error handling
@@ -2736,7 +2764,7 @@ class GameplayScreen(tk.Toplevel):
         logging.info("Animation restart sequence scheduled with conservative timing")
         
         # Add a safety timer to ensure transition completes even if some operations fail
-        self.after(3000, lambda: self._finish_transition() if hasattr(self, 'in_level_transition') and self.in_level_transition else None)
+        self.after(4000, lambda: self._finish_transition() if hasattr(self, 'in_level_transition') and self.in_level_transition else None)
 
     def _reset_worm_system(self):
         # Properly stop and clear the worm animation system to avoid glitches during level transition
@@ -2760,6 +2788,24 @@ class GameplayScreen(tk.Toplevel):
     def _reset_worm_update_retries(self):
         """Reset the worm update retry counter"""
         self._worm_update_retries = 0
+    
+    def _schedule_with_tracking(self, delay, callback):
+        """Schedule a callback with timer tracking for better cleanup"""
+        timer_id = self.after(delay, callback)
+        if hasattr(self, 'active_timers'):
+            self.active_timers.add(timer_id)
+        return timer_id
+    
+    def _cancel_tracked_timer(self, timer_id):
+        """Cancel a tracked timer and remove from tracking"""
+        if timer_id:
+            try:
+                self.after_cancel(timer_id)
+            except Exception as e:
+                logging.warning(f"Error cancelling timer {timer_id}: {e}")
+            finally:
+                if hasattr(self, 'active_timers'):
+                    self.active_timers.discard(timer_id)
             
     def _finish_transition(self):
         """Complete the transition process"""

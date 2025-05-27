@@ -135,9 +135,15 @@ class FallingSymbols:
     def stop_animation(self):
         """Stop the falling symbols animation"""
         self.game_over = True
-        if self.animation_after_id and self.canvas.winfo_exists():
-            self.canvas.after_cancel(self.animation_after_id)
-            self.animation_after_id = None
+        if self.animation_after_id:
+            try:
+                if self.canvas.winfo_exists():
+                    self.canvas.after_cancel(self.animation_after_id)
+            except Exception as e:
+                logging.warning(f"Error cancelling falling symbols animation: {e}")
+            finally:
+                self.animation_after_id = None
+        logging.info("Falling symbols animation stopped")
     
     def get_symbol_at_position(self, x, y, hit_radius=12):
         """

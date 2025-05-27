@@ -743,25 +743,36 @@ class WormAnimation:
     def stop_animation(self):
         """Stop the worm animation"""
         self.animation_running = False
+        
+        # Cancel main animation loop
         if self.after_id:
-            self.canvas.after_cancel(self.after_id)
+            try:
+                self.canvas.after_cancel(self.after_id)
+            except Exception as e:
+                logging.warning(f"Error cancelling main animation after_id: {e}")
             self.after_id = None
             
         # Cancel any shake animations
-        for shake_id in self.symbol_shake_ids.values():
+        for shake_id in list(self.symbol_shake_ids.values()):
             if shake_id:
                 try:
                     self.canvas.after_cancel(shake_id)
-                except:
-                    pass
-        self.symbol_shake_ids = {}
+                except Exception as e:
+                    logging.warning(f"Error cancelling shake animation: {e}")
+        self.symbol_shake_ids.clear()
         
         # Cancel transport timer
         if self.transport_timer:
-            self.canvas.after_cancel(self.transport_timer)
+            try:
+                self.canvas.after_cancel(self.transport_timer)
+            except Exception as e:
+                logging.warning(f"Error cancelling transport timer: {e}")
             self.transport_timer = None
             
-        logging.info("Stopped worm animation")
+        # Clear any pending transport operations
+        self.transporting_symbols.clear()
+        
+        logging.info("Stopped worm animation and cleared all timers")
     
     def handle_solution_canvas_redraw(self):
         """Called when the solution canvas is redrawn, invalidating symbol IDs and positions."""
@@ -820,12 +831,24 @@ class WormAnimation:
             self._schedule_symbol_transport()
             return
 
-        # Filter for symbols that are actually drawn (have a valid ID) and not already targeted
+        # Get IDs of symbols currently being targeted for transport by any worm
+        currently_targeted_for_transport_ids = set()
+        for w_check in self.worms:
+            tt = w_check.get('transport_target')
+            if tt and tt.get('id') is not None:
+                currently_targeted_for_transport_ids.add(tt.get('id'))
+            # Also consider generic target_symbol if it implies a pending steal, though transport_target is more direct
+            # For now, focusing on transport_target is cleaner for this specific filter.
+
         available_symbols_to_steal = [
-            s for s in self.solution_symbols 
-            if s.get('id') != -1 and not s.get('is_placeholder') and s.get('visible_to_player')
-            and s.get('id') not in [w.get('target_symbol', {}).get('id') for w in self.worms if w.get('target_symbol')]
+            s for s in self.solution_symbols
+            if s.get('id') != -1 and 
+               not s.get('is_placeholder') and 
+               s.get('visible_to_player') and 
+               s.get('id') not in currently_targeted_for_transport_ids and
+               s.get('id') not in self.transporting_symbols # Check against symbols already picked in current cycle by this function
         ]
+
         if not available_symbols_to_steal:
             logging.info("No available (non-placeholder, visible to player, not already targeted) solution symbols for worms to transport.")
             self._schedule_symbol_transport()
