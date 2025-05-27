@@ -1,1 +1,1 @@
-{"problem": "x/7=6", "solution_steps": ["x/7=6", "x = 6 \u00d7 7", "x = 42"], "visible_chars": [[0, 2], [2, 2], [1, 0], [1, 6], [2, 5], [1, 3], [0, 1], [2, 4], [1, 2], [0, 4], [2, 1], [1, 5], [1, 8], [0, 0], [1, 1], [0, 3], [2, 0], [1, 4], [2, 3], [1, 7]], "incorrect_clicks": 0, "game_over": true, "completed_lines": [0, 1, 2]}
+{"problem": "294/x=7", "solution_steps": ["294/x=7", "294 = 7x", "x = 294 \u00f7 7", "x = 42"], "visible_chars": [[0, 1], [0, 4], [0, 0], [0, 3], [0, 6], [0, 2], [0, 5]], "incorrect_clicks": 0, "game_over": false, "completed_lines": [0]}

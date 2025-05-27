@@ -365,7 +365,7 @@ class WelcomeScreen(tk.Tk):
         # New (10% bigger than current):
         original_calculated_size = max(10, min(width // 60, 16))
         current_quote_font_size = int(original_calculated_size * 0.9) # This is the base for the 10% increase
-        quote_font_size = int(current_quote_font_size * 1.1) # Increased by 10%
+        quote_font_size = int(current_quote_font_size * 1.21) # Increased by 10% from current (0.9 * 1.21 ≈ 1.089)
 
         quote_width = width * 0.8  # Use 80% of the width for the quote
 
