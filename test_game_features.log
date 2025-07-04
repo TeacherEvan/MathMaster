@@ -1,0 +1,8 @@
+2025-07-02 18:08:34,032 - ERROR - Error in feature test: No module named 'tkinter'
+2025-07-02 18:08:34,035 - ERROR - Traceback (most recent call last):
+  File "/workspace/test_game_features.py", line 29, in test_game_features
+    from welcome_screen import WelcomeScreen
+  File "/workspace/welcome_screen.py", line 1, in <module>
+    import tkinter as tk
+ModuleNotFoundError: No module named 'tkinter'
+

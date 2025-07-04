@@ -592,68 +592,149 @@ class GameplayScreen(tk.Toplevel):
                 logging.info("SSD drawing complete, but still in level transition. Worm symbol update deferred.")
     
     def add_stoic_quote_watermark(self):
-        """Add a transparent stoic quote to window B (solution_canvas)"""
-        if not hasattr(self, 'stoic_quote_id') and self.solution_canvas.winfo_exists():
-            canvas_width = self.solution_canvas.winfo_width()
-            canvas_height = self.solution_canvas.winfo_height()
-            
-            if canvas_width <= 1 or canvas_height <= 1:
-                # Canvas not ready, try again later
-                self.after(100, self.add_stoic_quote_watermark)
+        """Add a stoic quote as a subtle watermark to the solution canvas"""
+        try:
+            # Ensure canvas exists and is ready
+            if not hasattr(self, 'solution_canvas') or not self.solution_canvas or not self.solution_canvas.winfo_exists():
+                logging.warning("Solution canvas not ready for stoic quote watermark. Retrying later.")
+                # Retry after a short delay
+                if self.winfo_exists() and not getattr(self, 'in_level_transition', False):
+                    self.after(500, self.add_stoic_quote_watermark)
                 return
                 
-            # Increase font size and adjust width to prevent overflow
-            font_size = max(14, min(canvas_width // 30, 20))  # Increased from max 14 to max 20
-            quote_width = canvas_width * 0.9  # Increased from 0.8 to 0.9 for better scaling
+            # Get canvas dimensions with validation
+            try:
+                canvas_width = self.solution_canvas.winfo_width()
+                canvas_height = self.solution_canvas.winfo_height()
+            except tk.TclError:
+                logging.warning("Canvas dimensions not available for stoic quote. Retrying later.")
+                if self.winfo_exists() and not getattr(self, 'in_level_transition', False):
+                    self.after(500, self.add_stoic_quote_watermark)
+                return
+                
+            # Skip if canvas dimensions aren't valid yet
+            if canvas_width <= 1 or canvas_height <= 1:
+                logging.info(f"Canvas dimensions not ready ({canvas_width}x{canvas_height}). Retrying stoic quote.")
+                if self.winfo_exists() and not getattr(self, 'in_level_transition', False):
+                    self.after(500, self.add_stoic_quote_watermark)
+                return
+                
+            # Clear any existing quote
+            if hasattr(self, 'stoic_quote_id') and self.stoic_quote_id:
+                try:
+                    self.solution_canvas.delete(self.stoic_quote_id)
+                except tk.TclError:
+                    pass  # Quote item may have been already deleted
+                self.stoic_quote_id = None
+                
+            # Ensure we have a quote
+            if not hasattr(self, 'stoic_quote') or not self.stoic_quote:
+                from stoic_quotes import get_random_quote
+                self.stoic_quote = get_random_quote()
+                logging.info("Generated new stoic quote for watermark")
+                
+            # Calculate font size and position
+            font_size = max(10, min(canvas_width // 60, 16))
             
-            # Limit quote length to prevent overflow
-            max_chars_per_line = canvas_width // (font_size // 2)
-            displayed_quote = self.stoic_quote
-            if len(displayed_quote) > max_chars_per_line * 3:  # Limit to roughly 3 lines
-                displayed_quote = displayed_quote[:max_chars_per_line * 3 - 3] + "..."
+            # Position near bottom center, with safety margins
+            quote_x = canvas_width // 2
+            quote_y = max(canvas_height - 80, canvas_height * 0.85)  # Ensure it's not too close to bottom
             
-            # Create transparent quote text - positioned at bottom with padding
-            bottom_padding = 40  # Ensures it stays away from bottom edge
+            # Create the watermark with subtle styling
             self.stoic_quote_id = self.solution_canvas.create_text(
-                canvas_width // 2,
-                canvas_height - bottom_padding,  # Adjusted from fixed 30 to dynamic padding
-                text=displayed_quote,
+                quote_x, quote_y,
+                text=self.stoic_quote,
                 font=("Helvetica", font_size, "italic"),
-                fill=self.get_hex_with_alpha("#FFFFFF", 0.2),  # Slightly more visible (0.15 -> 0.2)
-                width=quote_width,
+                fill="#E0E0E0",  # Light gray for subtle appearance
+                width=canvas_width * 0.8,  # Wrap text to 80% of canvas width
                 justify=tk.CENTER,
                 tags="stoic_quote_watermark"
             )
             
-            # Send to back so it doesn't interfere with other elements
-            self.solution_canvas.tag_lower(self.stoic_quote_id)
-            logging.info(f"Added stoic quote watermark to Window B (font size: {font_size})")
-            
-            # Ensure quote stays within boundaries by checking its boundaries after creation
-            quote_bbox = self.solution_canvas.bbox(self.stoic_quote_id)
-            if quote_bbox:
-                quote_height = quote_bbox[3] - quote_bbox[1]
-                # If quote is too big and might overflow outside bottom of canvas
-                if quote_bbox[3] > canvas_height - 10:  # 10px safety margin
-                    # Reposition higher on canvas
-                    new_y = canvas_height - quote_height//2 - 15
-                    self.solution_canvas.coords(self.stoic_quote_id, canvas_width // 2, new_y)
-                    logging.info(f"Repositioned stoic quote to prevent overflow: {new_y}px from top")
-    
-    def _init_worm_animation(self):
-        if not self.solution_canvas or not self.solution_canvas.winfo_exists():
-            logging.warning("Solution canvas not ready for worm animation initialization.")
-            return
+            # Verify the quote was created and adjust position if needed
+            if self.stoic_quote_id:
+                try:
+                    # Get the actual bounds of the text
+                    bbox = self.solution_canvas.bbox(self.stoic_quote_id)
+                    if bbox:
+                        actual_bottom = bbox[3]
+                        # If text extends beyond canvas, move it up
+                        if actual_bottom > canvas_height - 10:
+                            new_y = canvas_height - (actual_bottom - quote_y) - 20
+                            self.solution_canvas.coords(self.stoic_quote_id, quote_x, new_y)
+                            logging.info(f"Repositioned stoic quote to prevent overflow: {new_y}px from top")
+                except tk.TclError:
+                    # If there's an error getting bbox, just log it but don't fail
+                    logging.warning("Could not verify stoic quote positioning")
+                    
+                logging.info("Stoic quote watermark added successfully")
+            else:
+                logging.warning("Failed to create stoic quote watermark")
+                
+        except Exception as e:
+            logging.error(f"Error adding stoic quote watermark: {e}")
+            # Don't retry on unexpected errors to avoid infinite loops
+            import traceback
+            logging.error(traceback.format_exc())
 
-        logging.info("Initializing Worm Animation for GameplayScreen")
-        self.worm_animation = WormAnimation(
-            self.solution_canvas, 
-            canvas_width=self.solution_canvas.winfo_width(), 
-            canvas_height=self.solution_canvas.winfo_height(),
-            symbol_transport_callback=self.handle_symbol_transport, # Signature now (line_idx, char_idx, char)
-            symbol_targeted_for_steal_callback=self.handle_symbol_targeted_for_steal
-        )
-        logging.info("Worm Animation initialized and linked to callbacks.")
+    def _init_worm_animation(self):
+        """Initialize or recreate the worm animation system"""
+        try:
+            if not self.solution_canvas or not self.solution_canvas.winfo_exists():
+                logging.warning("Solution canvas not ready for worm animation initialization. Retrying later.")
+                # Retry after a short delay if we're not in transition
+                if self.winfo_exists() and not getattr(self, 'in_level_transition', False):
+                    self.after(500, self._init_worm_animation)
+                return
+
+            # Get canvas dimensions with validation
+            try:
+                canvas_width = self.solution_canvas.winfo_width()
+                canvas_height = self.solution_canvas.winfo_height()
+            except tk.TclError:
+                logging.warning("Canvas dimensions not available for worm animation. Retrying later.")
+                if self.winfo_exists() and not getattr(self, 'in_level_transition', False):
+                    self.after(500, self._init_worm_animation)
+                return
+                
+            # Skip if canvas dimensions aren't valid yet
+            if canvas_width <= 1 or canvas_height <= 1:
+                logging.info(f"Canvas dimensions not ready ({canvas_width}x{canvas_height}). Retrying worm animation.")
+                if self.winfo_exists() and not getattr(self, 'in_level_transition', False):
+                    self.after(500, self._init_worm_animation)
+                return
+
+            logging.info("Initializing Worm Animation for GameplayScreen")
+            
+            # Clear any existing worm animation
+            if hasattr(self, 'worm_animation') and self.worm_animation:
+                try:
+                    self.worm_animation.stop_animation()
+                    self.worm_animation.clear_worms()
+                except Exception as e:
+                    logging.warning(f"Error cleaning up old worm animation: {e}")
+                    
+            # Create new worm animation instance
+            self.worm_animation = WormAnimation(
+                self.solution_canvas, 
+                canvas_width=canvas_width, 
+                canvas_height=canvas_height,
+                symbol_transport_callback=self.handle_symbol_transport,
+                symbol_targeted_for_steal_callback=self.handle_symbol_targeted_for_steal
+            )
+            
+            # Reset worm-related state variables
+            self.currently_targeted_by_worm = None
+            self.solution_symbols_data_for_worms = []
+            self.transported_by_worm_symbols = []
+            
+            logging.info("Worm Animation initialized and linked to callbacks successfully")
+            
+        except Exception as e:
+            logging.error(f"Error initializing worm animation: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
+            # Don't retry on unexpected errors to avoid infinite loops
 
     def handle_symbol_transport(self, transported_line_idx, transported_char_idx, transported_char):
         """Callback from WormAnimation when a symbol is successfully transported (stolen).
@@ -938,7 +1019,7 @@ class GameplayScreen(tk.Toplevel):
                 self.feedback_manager.show_feedback(f"Step {line_idx + 1} Unlocked!", 3000) # Changed "success" to 3000ms
 
             # Worm specific logic after a row is completed
-            if self.worm_animation:
+            if hasattr(self, 'worm_animation') and self.worm_animation:
                 if not self.worm_animation.animation_running:
                     logging.info("First row complete, starting worm animation and transport timer.")
                     self.worm_animation.start_animation(1) # Start with one worm
@@ -950,6 +1031,20 @@ class GameplayScreen(tk.Toplevel):
                 
                 # Call on_step_complete for speed boost logic etc.
                 self.worm_animation.on_step_complete()
+            else:
+                # Worm animation not ready - try to initialize it
+                logging.warning("Worm animation not available on step completion. Attempting to initialize.")
+                try:
+                    self._init_worm_animation()
+                    # After initialization, try to start it
+                    if hasattr(self, 'worm_animation') and self.worm_animation:
+                        logging.info("Worm animation initialized, starting with first row completion.")
+                        self.worm_animation.start_animation(1)
+                        self._start_transport_timer()
+                    else:
+                        logging.error("Failed to initialize worm animation after step completion")
+                except Exception as e:
+                    logging.error(f"Error initializing worm animation on step completion: {e}")
 
             self.check_level_complete() # Check if the entire level is complete
             return True
@@ -2736,14 +2831,17 @@ class GameplayScreen(tk.Toplevel):
             # First update the solution display with current data
             (400, lambda: self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars) if hasattr(self, 'solution_symbol_display') else None),
             
-            # Then add the stoic quote watermark after solution display is updated
-            (800, lambda: self.add_stoic_quote_watermark()),
+            # Then recreate the worm animation system (CRITICAL FIX)
+            (800, lambda: self._init_worm_animation()),
             
-            # Reset worm system but don't start animation yet
-            (1200, lambda: self._reset_worm_system()),
+            # Add the stoic quote watermark after solution display is ready (improved timing)
+            (1200, lambda: self.add_stoic_quote_watermark()),
             
             # Start falling symbols animation in window C
-            (1800, lambda: self.falling_symbols.start_animation() if hasattr(self, 'falling_symbols') and self.falling_symbols else None),
+            (1600, lambda: self.falling_symbols.start_animation() if hasattr(self, 'falling_symbols') and self.falling_symbols else None),
+            
+            # Update worm symbols after everything is ready (CRITICAL FIX)
+            (2000, lambda: self._update_worm_solution_symbols(initial_call=True) if hasattr(self, 'worm_animation') and self.worm_animation else None),
             
             # Finally, complete the transition process
             (2400, lambda: self._finish_transition())
@@ -2767,12 +2865,41 @@ class GameplayScreen(tk.Toplevel):
         self.after(4000, lambda: self._finish_transition() if hasattr(self, 'in_level_transition') and self.in_level_transition else None)
 
     def _reset_worm_system(self):
-        # Properly stop and clear the worm animation system to avoid glitches during level transition
+        """Reset worm system for level transition without completely destroying it"""
+        logging.info("Resetting worm system for level transition")
+        
         if hasattr(self, 'worm_animation') and self.worm_animation:
-            self.worm_animation.stop_animation()
-            self.worm_animation.clear_worms()
-            self.worm_animation = None
+            try:
+                # Stop animation and clear worms, but keep the system intact
+                self.worm_animation.stop_animation()
+                self.worm_animation.clear_worms()
+                
+                # Reset interaction states but keep the animation object
+                self.worm_animation.interaction_enabled = False
+                self.worm_animation.solution_symbols = []
+                
+                # Clear any transport timers
+                if hasattr(self.worm_animation, 'transport_timer') and self.worm_animation.transport_timer:
+                    try:
+                        self.worm_animation.canvas.after_cancel(self.worm_animation.transport_timer)
+                    except Exception as e:
+                        logging.warning(f"Error cancelling worm transport timer: {e}")
+                    self.worm_animation.transport_timer = None
+                    
+                logging.info("Worm animation system reset successfully")
+                
+            except Exception as e:
+                logging.error(f"Error resetting worm animation: {e}")
+                # If there's an error, mark for recreation
+                self.worm_animation = None
+        else:
+            logging.info("No worm animation to reset")
 
+        # Reset worm-related game state
+        self.currently_targeted_by_worm = None
+        self.solution_symbols_data_for_worms = []
+        self.transported_by_worm_symbols = []
+        
         # Reset worm update retries counter
         self._worm_update_retries = 0
 
@@ -2870,9 +2997,9 @@ class GameplayScreen(tk.Toplevel):
         # Flag that we're in transition to prevent new animations from starting
         self.in_level_transition = True
         
-        # 1. Cancel all animations and timers
-        logging.info("1. Canceling all animations and timers")
-        self._disable_all_animations()  # This also calls component-specific cleanup
+        # 1. Cancel all animations and timers (but preserve worm system)
+        logging.info("1. Disabling animations and canceling timers")
+        self._disable_all_animations()  # This calls _reset_worm_system() which now preserves the worm object
         
         # 2. Clear game state
         logging.info("2. Clearing game state")
@@ -2886,7 +3013,9 @@ class GameplayScreen(tk.Toplevel):
         logging.info("3. Clearing saved game data")
         self.clear_saved_game()
         
-        # 4. Update stoic quote
+        # 4. Update stoic quote for new level
+        logging.info("4. Updating stoic quote")
+        from stoic_quotes import get_random_quote
         self.stoic_quote = get_random_quote()
         if hasattr(self, 'stoic_quote_id') and self.stoic_quote_id:
             try:
