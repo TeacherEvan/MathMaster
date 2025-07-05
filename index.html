@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MathMistress - Greek Mathematical Wisdom</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="canvas-container">
+        <canvas id="gameCanvas" width="1200" height="800"></canvas>
+        
+        <!-- UI Overlay -->
+        <div class="ui-overlay">
+            <div class="top-bar">
+                <div class="level-indicator">
+                    <span class="greek-text">ΒΑΘΜΟΣ</span>
+                    <span id="currentLevel">Novice</span>
+                </div>
+                <div class="mistakes-counter">
+                    <span class="greek-text">ΣΦΑΛΜΑΤΑ</span>
+                    <span id="mistakeCount">0</span>/<span id="maxMistakes">20</span>
+                </div>
+            </div>
+            
+            <div class="problem-display">
+                <div class="problem-header">
+                    <h2 class="greek-title">ΜΑΘΗΜΑΤΙΚΗ ΣΟΦΙΑ</h2>
+                    <div class="philosophical-quote" id="philosophicalQuote">
+                        "Number is the within of all things" - Pythagoras
+                    </div>
+                </div>
+                <div class="equation-container" id="equationContainer">
+                    <div class="equation-line" id="currentEquation">x + 5 = 12</div>
+                </div>
+            </div>
+            
+            <div class="solution-area" id="solutionArea">
+                <div class="solution-header">
+                    <span class="greek-text">ΛΥΣΙΣ</span>
+                    <button class="help-button" id="helpButton" title="Seek guidance from the Oracle">
+                        <span class="greek-text">ΒΟΗΘΕΙΑ</span>
+                    </button>
+                </div>
+                <div class="solution-steps" id="solutionSteps">
+                    <!-- Solution steps will be dynamically generated -->
+                </div>
+            </div>
+            
+            <div class="distracting-characters">
+                <div class="character dionysus" id="dionysus">
+                    <div class="character-bubble" id="dionysusBubble">
+                        🍷 Come, let us celebrate instead of solving!
+                    </div>
+                </div>
+                <div class="character quetzalcoatl" id="quetzalcoatl">
+                    <div class="character-bubble" id="quetzalcoatlBubble">
+                        🐍 The serpent knows shortcuts... click here!
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Particle effects container -->
+        <div class="particle-container" id="particleContainer"></div>
+        
+        <!-- Game Over Modal -->
+        <div class="modal hidden" id="gameOverModal">
+            <div class="modal-content">
+                <h2>The Oracle Speaks</h2>
+                <p id="gameOverMessage"></p>
+                <div class="modal-actions">
+                    <button class="btn primary" id="restartButton">Begin Anew</button>
+                    <button class="btn secondary" id="nextLevelButton" style="display: none;">Ascend to Next Level</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Success Effects -->
+        <div class="success-overlay hidden" id="successOverlay">
+            <div class="success-message">
+                <h2>ΝΙΚΗ!</h2>
+                <p>Victory through wisdom!</p>
+            </div>
+        </div>
+    </div>
+    
+    <script src="mathengine.js"></script>
+    <script src="characters.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>

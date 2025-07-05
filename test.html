@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MathMistress - Test Suite</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .test-panel {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            width: 300px;
+            max-height: 80vh;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #d4af37;
+            border-radius: 10px;
+            padding: 15px;
+            color: white;
+            font-family: monospace;
+            font-size: 12px;
+            overflow-y: auto;
+            z-index: 9999;
+        }
+        .test-panel h3 {
+            color: #d4af37;
+            margin-bottom: 10px;
+            font-family: 'Cinzel', serif;
+        }
+        .test-console {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+        .test-status {
+            padding: 5px 10px;
+            border-radius: 5px;
+            margin: 5px 0;
+        }
+        .test-passed {
+            background: rgba(0, 128, 0, 0.3);
+            border-left: 4px solid green;
+        }
+        .test-failed {
+            background: rgba(255, 0, 0, 0.3);
+            border-left: 4px solid red;
+        }
+        .test-warning {
+            background: rgba(255, 165, 0, 0.3);
+            border-left: 4px solid orange;
+        }
+    </style>
+</head>
+<body>
+    <div class="canvas-container">
+        <canvas id="gameCanvas" width="1200" height="800"></canvas>
+        
+        <!-- UI Overlay -->
+        <div class="ui-overlay">
+            <div class="top-bar">
+                <div class="level-indicator">
+                    <span class="greek-text">ΒΑΘΜΟΣ</span>
+                    <span id="currentLevel">Novice</span>
+                </div>
+                <div class="mistakes-counter">
+                    <span class="greek-text">ΣΦΑΛΜΑΤΑ</span>
+                    <span id="mistakeCount">0</span>/<span id="maxMistakes">20</span>
+                </div>
+            </div>
+            
+            <div class="problem-display">
+                <div class="problem-header">
+                    <h2 class="greek-title">ΜΑΘΗΜΑΤΙΚΗ ΣΟΦΙΑ</h2>
+                    <div class="philosophical-quote" id="philosophicalQuote">
+                        "Number is the within of all things" - Pythagoras
+                    </div>
+                </div>
+                <div class="equation-container" id="equationContainer">
+                    <div class="equation-line" id="currentEquation">x + 5 = 12</div>
+                </div>
+            </div>
+            
+            <div class="solution-area" id="solutionArea">
+                <div class="solution-header">
+                    <span class="greek-text">ΛΥΣΙΣ</span>
+                    <button class="help-button" id="helpButton" title="Seek guidance from the Oracle">
+                        <span class="greek-text">ΒΟΗΘΕΙΑ</span>
+                    </button>
+                </div>
+                <div class="solution-steps" id="solutionSteps">
+                    <!-- Solution steps will be dynamically generated -->
+                </div>
+            </div>
+            
+            <div class="distracting-characters">
+                <div class="character dionysus" id="dionysus">
+                    <div class="character-bubble" id="dionysusBubble">
+                        🍷 Come, let us celebrate instead of solving!
+                    </div>
+                </div>
+                <div class="character quetzalcoatl" id="quetzalcoatl">
+                    <div class="character-bubble" id="quetzalcoatlBubble">
+                        🐍 The serpent knows shortcuts... click here!
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Particle effects container -->
+        <div class="particle-container" id="particleContainer"></div>
+        
+        <!-- Game Over Modal -->
+        <div class="modal hidden" id="gameOverModal">
+            <div class="modal-content">
+                <h2>The Oracle Speaks</h2>
+                <p id="gameOverMessage"></p>
+                <div class="modal-actions">
+                    <button class="btn primary" id="restartButton">Begin Anew</button>
+                    <button class="btn secondary" id="nextLevelButton" style="display: none;">Ascend to Next Level</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Success Effects -->
+        <div class="success-overlay hidden" id="successOverlay">
+            <div class="success-message">
+                <h2>ΝΙΚΗ!</h2>
+                <p>Victory through wisdom!</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Test Panel -->
+    <div class="test-panel">
+        <h3>🧪 Test Console</h3>
+        <div class="test-console" id="testConsole">
+            <div>Starting tests...</div>
+        </div>
+        <div id="testResults">
+            <div class="test-status test-passed" style="display: none;">✅ All tests passed</div>
+            <div class="test-status test-failed" style="display: none;">❌ Some tests failed</div>
+        </div>
+        <button onclick="runAllTests()" style="background: #d4af37; color: #1e3a8a; border: none; padding: 8px 16px; border-radius: 5px; cursor: pointer; font-family: 'Cinzel', serif; font-weight: 600;">Run Tests Again</button>
+    </div>
+    
+    <script src="mathengine.js"></script>
+    <script src="characters.js"></script>
+    <script src="game.js"></script>
+    <script>
+        // Enhanced test console
+        let testResults = {
+            passed: 0,
+            failed: 0,
+            warnings: 0
+        };
+        
+        // Override console methods to display in test panel
+        const originalConsole = {
+            log: console.log,
+            error: console.error,
+            warn: console.warn
+        };
+        
+        const testConsole = document.getElementById('testConsole');
+        
+        function addToTestConsole(message, type = 'log') {
+            const div = document.createElement('div');
+            div.textContent = message;
+            
+            if (type === 'error') {
+                div.style.color = '#ff6b6b';
+                testResults.failed++;
+            } else if (type === 'warn') {
+                div.style.color = '#ffa500';
+                testResults.warnings++;
+            } else if (message.includes('✅')) {
+                div.style.color = '#6bcf7f';
+                testResults.passed++;
+            }
+            
+            testConsole.appendChild(div);
+            testConsole.scrollTop = testConsole.scrollHeight;
+        }
+        
+        console.log = function(...args) {
+            originalConsole.log(...args);
+            addToTestConsole(args.join(' '), 'log');
+        };
+        
+        console.error = function(...args) {
+            originalConsole.error(...args);
+            addToTestConsole(args.join(' '), 'error');
+        };
+        
+        console.warn = function(...args) {
+            originalConsole.warn(...args);
+            addToTestConsole(args.join(' '), 'warn');
+        };
+        
+        function updateTestResults() {
+            const resultsDiv = document.getElementById('testResults');
+            resultsDiv.innerHTML = `
+                <div class="test-status test-passed">✅ Passed: ${testResults.passed}</div>
+                <div class="test-status test-failed">❌ Failed: ${testResults.failed}</div>
+                <div class="test-status test-warning">⚠️ Warnings: ${testResults.warnings}</div>
+            `;
+        }
+        
+        function runAllTests() {
+            testResults = { passed: 0, failed: 0, warnings: 0 };
+            testConsole.innerHTML = '<div>Restarting tests...</div>';
+            
+            // Wait a moment for the game to be ready
+            setTimeout(() => {
+                if (typeof testMathEngine === 'function') {
+                    testMathEngine();
+                    setTimeout(testGameInitialization, 500);
+                    setTimeout(testProblemGeneration, 1000);
+                    setTimeout(testCharacterSystem, 1500);
+                    setTimeout(testUIInteractions, 2000);
+                    setTimeout(() => {
+                        updateTestResults();
+                        console.log('🎉 Test run completed!');
+                    }, 3000);
+                } else {
+                    console.error('❌ Test functions not loaded');
+                }
+            }, 100);
+        }
+        
+        // Auto-run tests when page loads
+        setTimeout(runAllTests, 1000);
+    </script>
+    <script src="test_mathgame.js"></script>
+</body>
+</html>
