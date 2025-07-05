@@ -56,8 +56,9 @@ class MathMistressGame {
         // Set canvas size
         this.resizeCanvas();
         
-        // Setup resize handler
-        window.addEventListener('resize', () => this.resizeCanvas());
+        // Setup resize handler - store reference for proper cleanup
+        this.resizeHandler = () => this.resizeCanvas();
+        window.addEventListener('resize', this.resizeHandler);
     }
     
     resizeCanvas() {
@@ -715,7 +716,9 @@ class MathMistressGame {
         }
         
         // Clean up event listeners
-        window.removeEventListener('resize', this.resizeCanvas);
+        if (this.resizeHandler) {
+            window.removeEventListener('resize', this.resizeHandler);
+        }
     }
 }
 
