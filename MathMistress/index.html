@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MathMistress</title>
+    <link rel="stylesheet" href="styles/main.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;700&family=Roboto+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <header>
+      <h1>MathMistress</h1>
+      <p class="subtitle">Wisest is she who knows she knows nothing, yet still solves for x.</p>
+    </header>
+
+    <!-- Splash screen -->
+    <section id="splash">
+      <blockquote>
+        "The unexamined equation is not worth solving." – (almost) Socrates
+      </blockquote>
+      <button id="beginBtn" class="primary">Begin</button>
+    </section>
+
+    <!-- Game area -->
+    <main id="game" class="hidden">
+      <div id="focusContainer">
+        Focus&nbsp;<progress id="focusMeter" value="100" max="100"></progress>
+      </div>
+      <div id="problemArea">
+        <p id="prompt"></p>
+        <input id="answerInput" type="text" placeholder="Your answer" />
+        <button id="submitBtn" class="primary">Submit</button>
+        <button id="helpBtn" class="secondary">Help</button>
+      </div>
+      <p id="feedback"></p>
+    </main>
+
+    <!-- NPC overlay for distractions -->
+    <div id="npcOverlay" class="hidden"></div>
+
+    <!-- Scripts -->
+    <script type="module" src="scripts/core.js"></script>
+  </body>
+</html>

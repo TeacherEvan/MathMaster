@@ -1,0 +1,117 @@
+/* MathMistress base styles */
+
+:root {
+  --parchment: #f5eac5;
+  --twilight: #4b2e83;
+  --ink: #2c1c3a;
+  --accent: #c72c48;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: "Roboto Mono", monospace;
+  background: var(--parchment);
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+header {
+  text-align: center;
+  margin-top: 2rem;
+}
+
+h1 {
+  font-family: "Cormorant Garamond", serif;
+  font-size: 3rem;
+  margin: 0;
+  color: var(--twilight);
+}
+
+.subtitle {
+  font-style: italic;
+  margin-top: 0.3rem;
+}
+
+#splash {
+  text-align: center;
+  margin-top: 3rem;
+  animation: fadeIn 1.5s ease-in forwards;
+}
+
+.primary,
+.secondary {
+  padding: 0.6rem 1.2rem;
+  border: none;
+  cursor: pointer;
+  font-weight: 700;
+  border-radius: 4px;
+  margin: 0.5rem;
+}
+
+.primary {
+  background: var(--twilight);
+  color: var(--parchment);
+}
+
+.secondary {
+  background: transparent;
+  color: var(--twilight);
+  border: 2px solid var(--twilight);
+}
+
+.hidden {
+  display: none !important;
+}
+
+#game {
+  margin-top: 2rem;
+  text-align: center;
+}
+
+#problemArea {
+  margin: 1rem 0;
+}
+
+#npcOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(199, 44, 72, 0.85);
+  color: var(--parchment);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  padding: 2rem;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  font-family: "Cormorant Garamond", serif;
+}
+
+#npcOverlay.show {
+  opacity: 1;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
