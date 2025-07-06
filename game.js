@@ -719,11 +719,7 @@ class MathMistressGame {
             this.characterSystem.destroy();
         }
         
- cursor/fix-git-merge-conflict-syntax-errors-a6df
-        // Clean up event listeners
-
         // Clean up event listeners for resize
- main
         if (this.resizeHandler) {
             window.removeEventListener('resize', this.resizeHandler);
         }
