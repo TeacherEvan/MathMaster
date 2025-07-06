@@ -56,6 +56,10 @@ class MathMistressGame {
         // Set canvas size
         this.resizeCanvas();
 cursor/fix-duplicate-resize-event-listeners-ab2a
+cursor/fix-duplicate-resize-event-listeners-ab2a
+
+ cursor/fix-duplicate-resize-event-listeners-6887
+ cursor/fix-duplicate-window-resize-event-listeners-d98a
         
 
 
@@ -719,7 +723,10 @@ cursor/fix-duplicate-resize-event-listeners-ab2a
             this.characterSystem.destroy();
         }
         
+ cursor/fix-duplicate-resize-event-listeners-6887
+        // Clean up event listener for window resize
         // Clean up event listeners for resize
+ cursor/fix-duplicate-window-resize-event-listeners-d98a
         if (this.boundResizeHandler) {
             window.removeEventListener('resize', this.boundResizeHandler);
         }
