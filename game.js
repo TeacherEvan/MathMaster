@@ -56,15 +56,9 @@ class MathMistressGame {
         // Set canvas size
         this.resizeCanvas();
         
-cursor/fix-duplicate-window-resize-event-listeners-d98a
         // Setup resize handler using a stable function reference for proper cleanup
         this.boundResizeHandler = this.resizeCanvas.bind(this);
         window.addEventListener('resize', this.boundResizeHandler);
-
-        // Setup resize handler - store reference for proper cleanup
-        this.resizeHandler = () => this.resizeCanvas();
-        window.addEventListener('resize', this.resizeHandler);
-cursor/fix-git-merge-conflict-syntax-errors-c9ad
     }
     
     resizeCanvas() {
@@ -721,13 +715,9 @@ cursor/fix-git-merge-conflict-syntax-errors-c9ad
             this.characterSystem.destroy();
         }
         
-        // Clean up event listeners for resize
-cursor/fix-duplicate-window-resize-event-listeners-d98a
+        // Clean up event listener for window resize
         if (this.boundResizeHandler) {
             window.removeEventListener('resize', this.boundResizeHandler);
-
-        if (this.resizeHandler) {
-            window.removeEventListener('resize', this.resizeHandler); cursor/fix-git-merge-conflict-syntax-errors-c9ad
         }
     }
 }
