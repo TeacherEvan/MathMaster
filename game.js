@@ -55,7 +55,11 @@ class MathMistressGame {
         
         // Set canvas size
         this.resizeCanvas();
+cursor/fix-duplicate-resize-event-listeners-ab2a
+cursor/fix-duplicate-resize-event-listeners-ab2a
+
  cursor/fix-duplicate-resize-event-listeners-6887
+ cursor/fix-duplicate-window-resize-event-listeners-d98a
         
 
 
