@@ -61,6 +61,12 @@ cursor/fix-duplicate-resize-event-listeners-ab2a
  cursor/fix-duplicate-resize-event-listeners-6887
  cursor/fix-duplicate-window-resize-event-listeners-d98a
         
+ cursor/fix-duplicate-window-resize-event-listeners-d98a
+
+        // Setup resize handler - store reference for proper cleanup
+        this.resizeHandler = () => this.resizeCanvas();
+        window.addEventListener('resize', this.resizeHandler);
+ main
 
 
 
@@ -726,10 +732,19 @@ cursor/fix-duplicate-resize-event-listeners-ab2a
             this.characterSystem.destroy();
         }
         
- cursor/fix-duplicate-resize-event-listeners-6887
-        // Clean up event listener for window resize
+cursor/fix-duplicate-window-resize-event-listeners-d98a
+ 
+
+ cursor/fix-git-merge-conflict-syntax-errors-a6df
+        // Clean up event listeners
+
         // Clean up event listeners for resize
- cursor/fix-duplicate-window-resize-event-listeners-d98a
+ main
+        if (this.resizeHandler) {
+            window.removeEventListener('resize', this.resizeHandler);
+        }
+
+ main
         if (this.boundResizeHandler) {
             window.removeEventListener('resize', this.boundResizeHandler);
         }
