@@ -63,7 +63,10 @@ cursor/fix-duplicate-resize-event-listeners-ab2a
         
 
 
+
+
  cursor/fix-duplicate-window-resize-event-listeners-d98a
+ cursor/fix-duplicate-resize-event-listeners-e05d
         // Setup resize handler using a stable function reference for proper cleanup
         this.boundResizeHandler = this.resizeCanvas.bind(this);
         window.addEventListener('resize', this.boundResizeHandler);
