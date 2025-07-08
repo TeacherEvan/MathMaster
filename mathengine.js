@@ -149,11 +149,22 @@ class MathEngine {
                 const x = a - b;
                 return { equation: `${a} - x = ${b}`, answer: x, type: 'a_minus_x' };
             },
-            () => { // a + x - c = b
+            () => { // a + x - c = b  (ensure x is always positive)
                 const a = this.randomInt(1, maxNum / 4);
                 const c = this.randomInt(1, maxNum / 4);
-                const b = this.randomInt(1, maxNum / 4);
-                const x = b - a + c;
+                // Choose a positive x first, then derive b so that equation balances
+                const x = this.randomInt(1, maxNum / 4);
+                const b = a + x - c;
+                // Make sure b remains positive; if not, swap the values of a and c
+                if (b <= 0) {
+                    return (() => { // regenerate with swapped a and c to guarantee positivity
+                        const a2 = c;
+                        const c2 = a;
+                        const x2 = x;
+                        const b2 = a2 + x2 - c2; // this will always be positive now
+                        return { equation: `${a2} + x - ${c2} = ${b2}`, answer: x2, type: 'a_plus_x_minus_c' };
+                    })();
+                }
                 return { equation: `${a} + x - ${c} = ${b}`, answer: x, type: 'a_plus_x_minus_c' };
             }
         ];
