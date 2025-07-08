@@ -1011,22 +1011,30 @@ class LockAnimation:
             # Stop particle system
             self.particle_system.stop()
             
-            # Cancel all scheduled callbacks
-            for key, after_id in list(self.after_ids.items()):
+            # Cancel all scheduled callbacks - create a copy to avoid modification during iteration
+            after_ids_copy = dict(self.after_ids)
+            cancelled_count = 0
+            
+            for key, after_id in after_ids_copy.items():
                 try:
-                    if after_id:
+                    if after_id and self.canvas.winfo_exists():
                         self.canvas.after_cancel(after_id)
+                        cancelled_count += 1
                         logging.debug(f"Cancelled timer: {key}")
                 except tk.TclError:
-                    pass  # Canvas might be destroyed
+                    # Canvas might be destroyed - this is expected
+                    pass
                 except Exception as e:
                     logging.warning(f"Error cancelling timer {key}: {e}")
             
+            # Clear the dictionary after all cancellations
             self.after_ids.clear()
-            logging.debug("All lock animation timers stopped")
+            logging.debug(f"All lock animation timers stopped. Cancelled {cancelled_count} timers.")
             
         except Exception as e:
             logging.error(f"Error stopping animations: {e}")
+            # Ensure after_ids is cleared even if there's an error
+            self.after_ids.clear()
     
     def get_performance_stats(self) -> Dict[str, Any]:
         """Get current performance statistics"""
@@ -1061,45 +1069,3 @@ class LockAnimation:
             # Handle cases where canvas/items might already be gone
             pass
     
-    def react_to_character_reveal(self, character):
-        """Show character formation when user reveals a character in the solution"""
-        if not self.canvas.winfo_exists():
-            return
-            
-        # Only react to significant characters
-        if character and character in "0123456789+-=xX":
-            # Display the character formation
-            self.display_character_formation(character)
-    
-    def stop_all_persistent_animations(self):
-        """Stop all ongoing after() loops managed by this instance."""
-        logging.debug(f"[LockAnimation] Stopping all persistent animations. Current after_ids: {list(self.after_ids.keys())}")
-        
-        # First set inactive to prevent new animations from starting
-        self.is_active = False
-        
-        # Cancel character display timer specifically
-        if hasattr(self, 'character_display_timer') and self.character_display_timer:
-            try:
-                self.canvas.after_cancel(self.character_display_timer)
-                self.character_display_timer = None
-                logging.debug("[LockAnimation] Cancelled character_display_timer")
-            except Exception as e:
-                logging.warning(f"[LockAnimation] Error cancelling character_display_timer: {e}")
-        
-        # Cancel all tracked after_ids
-        for key in list(self.after_ids.keys()): # Iterate over a copy of keys
-            after_id = self.after_ids.pop(key, None)
-            if after_id:
-                try:
-                    self.canvas.after_cancel(after_id)
-                    logging.debug(f"[LockAnimation] Cancelled after_id for '{key}': {after_id}")
-                except tk.TclError as e:
-                    # This can happen if the canvas is already destroyed
-                    logging.warning(f"[LockAnimation] TclError cancelling after_id for '{key}' ({after_id}): {e}")
-                except Exception as e:
-                    logging.error(f"[LockAnimation] Exception cancelling after_id for '{key}' ({after_id}): {e}")
-        
-        # Clear the dictionary
-        self.after_ids.clear()
-        logging.debug("[LockAnimation] All persistent animations stopped")
