@@ -479,11 +479,14 @@ class CharacterSystem {
             
             // Clear particles
             this.particleSystem = [];
-            
-            // Stop distraction cycle
-            if (this.distractionTimer) {
-                clearInterval(this.distractionTimer);
-            }
+
+            // Remove all event listeners on character elements by replacing them with clean clones
+            Object.values(this.characterData).forEach(({ element }) => {
+                if (element && element.parentNode) {
+                    const cleanClone = element.cloneNode(true);
+                    element.parentNode.replaceChild(cleanClone, element);
+                }
+            });
         } else {
             // Show all characters
             Object.values(this.characterData).forEach(character => {
@@ -522,6 +525,15 @@ class CharacterSystem {
         }
         
         this.particleSystem = [];
+
+        // Remove all event listeners on character elements by replacing them with clean clones
+        Object.values(this.characterData).forEach(({ element }) => {
+            if (element && element.parentNode) {
+                const cleanClone = element.cloneNode(true);
+                element.parentNode.replaceChild(cleanClone, element);
+            }
+        });
+
         this.setActive(false);
     }
 }

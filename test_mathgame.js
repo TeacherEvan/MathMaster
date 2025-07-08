@@ -348,7 +348,7 @@ function testGameIntegration() {
 // Main test runner
 function runAllTests() {
     console.log('🧪 Starting comprehensive test suite for Git merge conflict fixes...');
-    console.log('=' * 60);
+    console.log('='.repeat(60));
     
     // Run all tests
     setTimeout(() => testMergeConflictRemoval(), 100);
@@ -364,7 +364,7 @@ function runAllTests() {
     
     setTimeout(() => {
         console.log('\n🎉 Test suite completed!');
-        console.log('=' * 60);
+        console.log('='.repeat(60));
     }, 1100);
 }
 
