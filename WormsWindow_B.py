@@ -358,7 +358,13 @@ class WormAnimation:
         
     def animate(self):
         """Main animation loop for all worms"""
-        if not self.animation_running or not self.canvas.winfo_exists():
+        if not self.animation_running:
+            return
+            
+        # Check canvas exists before any operations
+        if not self.canvas or not self.canvas.winfo_exists():
+            logging.warning("Canvas destroyed during animation, stopping worm animation")
+            self.animation_running = False
             return
             
         try:
@@ -378,10 +384,18 @@ class WormAnimation:
             # Update any interaction particles
             self._update_particles()
                 
-            # Schedule next animation frame
-            self.after_id = self.canvas.after(50, self.animate)
+            # Schedule next animation frame only if still running and canvas exists
+            if self.animation_running and self.canvas.winfo_exists():
+                self.after_id = self.canvas.after(50, self.animate)
+            else:
+                logging.info("Animation stopped due to canvas destruction or animation flag")
+                
+        except tk.TclError as e:
+            logging.warning(f"TclError in worm animation (canvas likely destroyed): {e}")
+            self.animation_running = False
         except Exception as e:
             logging.error(f"Error in worm animation: {e}")
+            # Don't stop animation for other errors, but log them
             
     def _update_worm(self, worm):
         """Update a single worm's position and appearance"""

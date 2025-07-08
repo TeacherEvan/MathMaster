@@ -280,6 +280,10 @@ def generate_solution_steps(problem_input): # Renamed to avoid confusion
                     if a_div_val == 0:
                          logging.warning(f"[generate_solution_steps] Division by zero in x/a=b for '{problem}'.")
                          return [original_problem_for_steps, "Error: Division by zero"]
+                    # Also check if b_div_val is 0, which would create invalid math (x/a = 0)
+                    if b_div_val == 0:
+                        logging.warning(f"[generate_solution_steps] Invalid equation x/a=0 for '{problem}' - solution would be x=0.")
+                        return [original_problem_for_steps, f"x = 0"]
                     result = a_div_val * b_div_val
                     logging.info(f"[generate_solution_steps] Parsed x/a=b for '{problem}' -> a={a_div_val}, b={b_div_val}")
                     return [original_problem_for_steps, f"x = {b_div_val} × {a_div_val}", f"x = {result}"]
