@@ -57,7 +57,8 @@ class MathMistressGame {
         this.resizeCanvas();
 
         // Setup resize handler using a stable function reference for proper cleanup
-        this.boundResizeHandler = this.resizeCanvas.bind(this);
+        this.resizeHandler = this.resizeCanvas.bind(this);
+        this.boundResizeHandler = this.resizeHandler; // Keep both for compatibility
         window.addEventListener('resize', this.boundResizeHandler);
     }
     
