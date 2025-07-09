@@ -726,10 +726,6 @@ class MathMistressGame {
 
         }
         
-        if (this.resizeHandler) {
-            window.removeEventListener('resize', this.resizeHandler);
-
-
         }
     }
 }
