@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 const PROJECT_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');
-const GAME_FILE = path.join(PROJECT_ROOT, 'game.js');
+const GAME_FILE = path.join(PROJECT_ROOT, 'assets', 'web', 'game.js');
 
 describe('Project sanity checks', () => {
   test('game.js has valid JavaScript syntax', () => {

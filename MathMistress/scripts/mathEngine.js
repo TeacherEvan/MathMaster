@@ -43,7 +43,7 @@ function hardArithmetic() {
   const add = randomInt(1, 15);
   return {
     prompt: `${base}^${exp} + ${add} = ?`,
-    answer: (Math.pow(base, exp) + add).toString(),
+    answer: (base ** exp + add).toString(),
   };
 }
 
