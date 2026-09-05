@@ -1,8 +1,7 @@
 import { generateProblem, validateAnswer } from './mathEngine.js';
-import { Dionysus, Quetzalcoatl, initNPCs } from './npc.js';
+import { initNPCs } from './npc.js';
 import { showNextHint, resetHints } from './help.js';
 
-// DOM elements
 const splash = document.getElementById('splash');
 const beginBtn = document.getElementById('beginBtn');
 const gameSection = document.getElementById('game');
@@ -13,6 +12,8 @@ const helpBtn = document.getElementById('helpBtn');
 const feedbackEl = document.getElementById('feedback');
 const focusMeter = document.getElementById('focusMeter');
 const npcOverlay = document.getElementById('npcOverlay');
+const muteBtn = document.getElementById('muteBtn');
+const ambientAudio = document.getElementById('ambientAudio');
 
 let currentProblem = null;
 let level = 1;
@@ -51,14 +52,12 @@ function onSubmit() {
   } else {
     feedbackEl.textContent = 'Try again';
     feedbackEl.style.color = 'var(--accent)';
-    // Drain focus due to error
     drainFocus(5);
   }
 }
 
 function onHelp() {
   showNextHint();
-  // Using help drains focus slightly
   drainFocus(2);
 }
 
@@ -70,8 +69,13 @@ function drainFocus(amount) {
   }
 }
 
-function onNPCDistraction(message) {
-  npcOverlay.textContent = message;
+function onNPCDistraction(name, phrase, spritePath) {
+  let html = '';
+  if (spritePath) {
+    html += `<img src="${spritePath}" alt="${name}" width="48" height="48" />`;
+  }
+  html += `<strong>${name}:</strong> ${phrase}`;
+  npcOverlay.innerHTML = html;
   npcOverlay.classList.add('show');
   setTimeout(() => npcOverlay.classList.remove('show'), 2000);
   drainFocus(10);
@@ -82,9 +86,22 @@ function endGame(msg) {
   feedbackEl.textContent = msg;
 }
 
+function toggleMute() {
+  if (ambientAudio.paused) {
+    ambientAudio.play().catch(() => { /* autoplay blocked; that's fine */ });
+    muteBtn.textContent = 'Mute';
+    muteBtn.setAttribute('aria-pressed', 'false');
+  } else {
+    ambientAudio.pause();
+    muteBtn.textContent = 'Unmute';
+    muteBtn.setAttribute('aria-pressed', 'true');
+  }
+}
+
 beginBtn.addEventListener('click', startGame);
 submitBtn.addEventListener('click', onSubmit);
 answerInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') onSubmit();
 });
 helpBtn.addEventListener('click', onHelp);
+if (muteBtn) muteBtn.addEventListener('click', toggleMute);

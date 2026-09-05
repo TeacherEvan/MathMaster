@@ -16,6 +16,7 @@
     <header>
       <h1>MathMistress</h1>
       <p class="subtitle">Wisest is she who knows she knows nothing, yet still solves for x.</p>
+      <button id="muteBtn" class="secondary" aria-pressed="true" type="button">Unmute</button>
     </header>
 
     <!-- Splash screen -->
@@ -42,6 +43,9 @@
 
     <!-- NPC overlay for distractions -->
     <div id="npcOverlay" class="hidden"></div>
+
+    <!-- Ambient audio (muted by default; user can opt in) -->
+    <audio id="ambientAudio" src="assets/audio/ambient-loop.wav" loop preload="none"></audio>
 
     <!-- Scripts -->
     <script type="module" src="scripts/core.js"></script>

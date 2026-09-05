@@ -1,8 +1,7 @@
 // Progressive hint system for MathMistress
 
 let hintPointer = 0;
-const hintArea = document.getElementById('feedback');
-// Basic generic hints; could be expanded per-level.
+
 const hintFunctions = [
   () => showHint('Focus on the operator first.'),
   () => showHint('Rearrange terms if it helps.'),
@@ -10,9 +9,16 @@ const hintFunctions = [
   () => showHint('Double-check your arithmetic.'),
 ];
 
+function hintArea() {
+  return document.getElementById('feedback');
+}
+
 function showHint(text) {
-  hintArea.textContent = text;
-  hintArea.style.color = 'var(--ink)';
+  const area = hintArea();
+  if (area) {
+    area.textContent = text;
+    area.style.color = 'var(--ink)';
+  }
 }
 
 export function showNextHint() {

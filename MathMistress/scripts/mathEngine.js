@@ -1,15 +1,12 @@
 // Simple math problem generator for MathMistress
 // No persistence – everything lives in memory.
 
+import { randomInt } from './utils.js';
+
 export function generateProblem(level = 1) {
-  // Increase difficulty by level: 1-3 basic, 4-6 medium, 7+ hard
   if (level < 4) return basicArithmetic();
   if (level < 7) return mediumArithmetic();
   return hardArithmetic();
-}
-
-function randomInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 function basicArithmetic() {

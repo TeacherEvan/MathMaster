@@ -204,3 +204,5 @@ Thumbs.db
 # Test files
 test_imports.py
 *.log
+# V2 audit scratch (surgical-implementation)
+docs/.scratch-audit/
