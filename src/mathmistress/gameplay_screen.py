@@ -1961,7 +1961,8 @@ class GameplayScreen(tk.Toplevel):
                     self.lock_animation.react_to_character_reveal(char_to_reveal_for_log)
             
             except tk.TclError as e:
-                logging.warning(f"[reveal_char] TclError during itemconfig/flash for char '{char_to_reveal_for_log}' tag '{f"sol_{line_idx}_{char_idx}"}' ({line_idx}, {char_idx}): {e}")
+                tag_str = f"sol_{line_idx}_{char_idx}"
+                logging.warning(f"[reveal_char] TclError during itemconfig/flash for char '{char_to_reveal_for_log}' tag '{tag_str}' ({line_idx}, {char_idx}): {e}")
                 
             # Check if this step is now complete
             self._check_if_step_complete(line_idx)
@@ -1969,7 +1970,8 @@ class GameplayScreen(tk.Toplevel):
             # Update lock segment visuals if appropriate
             self._check_for_lock_visual_update()
             
-            logging.info(f"[reveal_char] Successfully revealed character '{char_to_reveal_for_log}' (tag: {f"sol_{line_idx}_{char_idx}"}) at position ({line_idx}, {char_idx}).")
+            tag_str = f"sol_{line_idx}_{char_idx}"
+            logging.info(f"[reveal_char] Successfully revealed character '{char_to_reveal_for_log}' (tag: {tag_str}) at position ({line_idx}, {char_idx}).")
                     
             # Log completion percentage for this line
             total_chars_in_line = len(current_line)
