@@ -74,4 +74,72 @@ describe('mathEngine', () => {
       }
     }
   });
+
+  // --- Fractions tier (added 2026-09-07 per BLUEPRINT §4) ---
+  test('fractions tier returns prompt and answer (level >= 13)', () => {
+    const problem = generateProblem(13);
+    expect(typeof problem.prompt).toBe('string');
+    expect(typeof problem.answer).toBe('string');
+    expect(problem.answer.length).toBeGreaterThan(0);
+  });
+
+  test('fractions tier prompt matches "<a>/<c> + <b>/<d> = ?" shape', () => {
+    for (let i = 0; i < 50; i += 1) {
+      const p = generateProblem(13);
+      expect(p.prompt).toMatch(/^\d+\/\d+ \+ \d+\/\d+ = \?$/);
+    }
+  });
+
+  test('fractions tier answer is reduced "<x>/<y>" with gcd(x, y) == 1', () => {
+    const gcd = (a, b) => {
+      let x = Math.abs(a);
+      let y = Math.abs(b);
+      while (y !== 0) {
+        const t = y;
+        y = x % y;
+        x = t;
+      }
+      return x || 1;
+    };
+    for (let i = 0; i < 50; i += 1) {
+      const p = generateProblem(13);
+      const m = p.answer.match(/^(\d+)\/(\d+)$/);
+      expect(m).not.toBeNull();
+      if (m) {
+        const num = parseInt(m[1], 10);
+        const den = parseInt(m[2], 10);
+        expect(den).toBeGreaterThan(0);
+        expect(gcd(num, den)).toBe(1);
+      }
+    }
+  });
+
+  test('fractions tier same-denominator form yields correct reduced sum', () => {
+    const gcd = (a, b) => {
+      let x = Math.abs(a);
+      let y = Math.abs(b);
+      while (y !== 0) {
+        const t = y;
+        y = x % y;
+        x = t;
+      }
+      return x || 1;
+    };
+    for (let i = 0; i < 30; i += 1) {
+      const p = generateProblem(13);
+      const m = p.prompt.match(/^(\d+)\/(\d+) \+ (\d+)\/(\d+) = \?$/);
+      expect(m).not.toBeNull();
+      if (m) {
+        const a = parseInt(m[1], 10);
+        const cd = parseInt(m[2], 10);
+        const b = parseInt(m[3], 10);
+        const dd = parseInt(m[4], 10);
+        const lcm = (cd * dd) / gcd(cd, dd);
+        const num = (a * (lcm / cd)) + (b * (lcm / dd));
+        const g = gcd(num, lcm);
+        const expected = `${num / g}/${lcm / g}`;
+        expect(p.answer).toBe(expected);
+      }
+    }
+  });
 });
