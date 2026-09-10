@@ -19,7 +19,7 @@ from falling_symbols import FallingSymbols # Import the falling symbols manager
 from WormsWindow_B import WormAnimation # Import the worm animation class
 from window_b_solution_symbols import SolutionSymbolDisplay # Added import
 from stoic_quotes import get_random_quote
-from constants import DEFAULT_HELP_TEXT  # Hoisted repeated literal (2026-09-10)
+from constants import DEFAULT_HELP_TEXT, EQUATION_PATTERN_A, EQUATION_PATTERN_B, EQUATION_PATTERN_B_PREFIX  # Hoisted repeated literals (2026-09-10)
 from help_display import HelpDisplay
 
 # Import the problem sets from the module files
@@ -117,11 +117,11 @@ def generate_solution_steps(problem_input): # Renamed to avoid confusion
 
         # Try to parse "a + x - c = b"
         # Example: 12 + x - 2 = 20
-        if "+ x -" in equation_part: 
-            logging.info(f"[generate_solution_steps] Attempting to parse as 'a + x - c = b' for '{equation_part}'")
+        if EQUATION_PATTERN_A in equation_part: 
+            logging.info(f"[generate_solution_steps] Attempting to parse as '{EQUATION_PATTERN_A}' for '{equation_part}'")
             try:
                 # Split around "+ x -" to get 'a' and 'c'
-                parts = equation_part.split("+ x -")
+                parts = equation_part.split(EQUATION_PATTERN_A)
                 if len(parts) == 2:
                     a_str = parts[0].strip()
                     c_str = parts[1].strip()
@@ -141,17 +141,17 @@ def generate_solution_steps(problem_input): # Renamed to avoid confusion
                         f"x = {final_result}"
                     ]
                 else:
-                    logging.warning(f"[generate_solution_steps] 'a + x - c = b' pattern for '{problem}' split yielded {len(parts)} parts, expected 2. Parts: {parts}")
+                    logging.warning(f"[generate_solution_steps] '{EQUATION_PATTERN_A}' pattern for '{problem}' split yielded {len(parts)} parts, expected 2. Parts: {parts}")
             except (ValueError, IndexError) as e:
-                logging.warning(f"[generate_solution_steps] Error parsing '{problem}' with 'a + x - c = b' specific pattern: {e}. Falling through.")
+                logging.warning(f"[generate_solution_steps] Error parsing '{problem}' with '{EQUATION_PATTERN_A}' specific pattern: {e}. Falling through.")
 
         # Try to parse "x + a - c = b"
         # Example: x + 12 - 2 = 20
         elif equation_part.startswith("x +") and "-" in equation_part: 
-            logging.info(f"[generate_solution_steps] Attempting to parse as 'x + a - c = b' for '{equation_part}'")
+            logging.info(f"[generate_solution_steps] Attempting to parse as '{EQUATION_PATTERN_B}' for '{equation_part}'")
             try:
                 # Remove "x + " from the beginning, then split by "-"
-                temp_eq = equation_part.replace("x +", "", 1).strip()
+                temp_eq = equation_part.replace(EQUATION_PATTERN_B_PREFIX, "", 1).strip()
                 parts = temp_eq.split("-", 1) # Should give [a, c]
                 if len(parts) == 2:
                     a_str = parts[0].strip()
@@ -172,9 +172,9 @@ def generate_solution_steps(problem_input): # Renamed to avoid confusion
                         f"x = {final_result}"
                     ]
                 else:
-                    logging.warning(f"[generate_solution_steps] 'x + a - c = b' pattern for '{problem}' split yielded {len(parts)} parts, expected 2. Parts: {parts}")
+                    logging.warning(f"[generate_solution_steps] '{EQUATION_PATTERN_B}' pattern for '{problem}' split yielded {len(parts)} parts, expected 2. Parts: {parts}")
             except (ValueError, IndexError) as e:
-                logging.warning(f"[generate_solution_steps] Error parsing '{problem}' with 'x + a - c = b' specific pattern: {e}. Falling through.")
+                logging.warning(f"[generate_solution_steps] Error parsing '{problem}' with '{EQUATION_PATTERN_B}' specific pattern: {e}. Falling through.")
         else:
             logging.info(f"[generate_solution_steps] Complex +/- pattern detected for '{problem}' but did not match 'a + x - c' or 'x + a - c' structure precisely.")
 
@@ -1962,7 +1962,8 @@ class GameplayScreen(tk.Toplevel):
                     self.lock_animation.react_to_character_reveal(char_to_reveal_for_log)
             
             except tk.TclError as e:
-                logging.warning(f"[reveal_char] TclError during itemconfig/flash for char '{char_to_reveal_for_log}' tag '{f"sol_{line_idx}_{char_idx}"}' ({line_idx}, {char_idx}): {e}")
+                _tag = f"sol_{line_idx}_{char_idx}"
+                logging.warning(f"[reveal_char] TclError during itemconfig/flash for char '{char_to_reveal_for_log}' tag '{_tag}' ({line_idx}, {char_idx}): {e}")
                 
             # Check if this step is now complete
             self._check_if_step_complete(line_idx)
@@ -1970,7 +1971,8 @@ class GameplayScreen(tk.Toplevel):
             # Update lock segment visuals if appropriate
             self._check_for_lock_visual_update()
             
-            logging.info(f"[reveal_char] Successfully revealed character '{char_to_reveal_for_log}' (tag: {f"sol_{line_idx}_{char_idx}"}) at position ({line_idx}, {char_idx}).")
+            _tag = f"sol_{line_idx}_{char_idx}"
+            logging.info(f"[reveal_char] Successfully revealed character '{char_to_reveal_for_log}' (tag: {_tag}) at position ({line_idx}, {char_idx}).")
                     
             # Log completion percentage for this line
             total_chars_in_line = len(current_line)
