@@ -149,3 +149,15 @@ derived from the structural signals above — they name concrete extractions
   its next tick.
 - implementer: `cron_surgical_impl.py` will pick this plan up once the reviewer
   marks it `READY` or `READY-WITH-WARNINGS`.
+
+
+## REVIEW 2026-09-10T18:21:49.449204+07:00
+
+**Verdict:** `NEEDS-REVISION`
+
+**Structural check:** objectives=12 file_header=✓ imports=✓ why=✓ dod=✓ security=✓
+
+**Gaps:**
+1. **Language mismatch — plan targets TypeScript tooling on a Python file.** The file is `gameplay_screen.py` (Python: `import tkinter`, `import random`, `import time`), but every objective assumes TypeScript: `constants.ts`, `strings.ts`, `index.ts` barrels, `pnpm dlx knip`, `ts-prune`, `export` statements, `type-check`. None of these tools or file conventions apply to a 3,044-line Python module. The structural analysis (repeated literals, imports) is valid for Python, but the extraction plan is entirely wrong-language.
+2. **OBJ-005 through OBJ-012 are identical filler.** Eight of twelve objectives are verbatim copies of "Hardening pass N — Tighten types / tighten prop drilling… no `any` added." This is the generic N-slice filler the plan header explicitly claims it avoids. They add zero value and were not derived from any structural signal.
+3. **OBJ-002 and OBJ-003 are inapplicable.** Running `knip`/`ts-prune` against a `.py` file and auditing `index.ts` barrels for a Python module are nonsensical. These objectives should be removed or replaced with Python-appropriate dead-code detection (e.g., `pyflakes`, `vulture`) and Python barrel/`__init__.py` audits if applicable.
