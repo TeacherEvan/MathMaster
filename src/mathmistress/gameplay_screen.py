@@ -19,6 +19,7 @@ from falling_symbols import FallingSymbols # Import the falling symbols manager
 from WormsWindow_B import WormAnimation # Import the worm animation class
 from window_b_solution_symbols import SolutionSymbolDisplay # Added import
 from stoic_quotes import get_random_quote
+from constants import DEFAULT_HELP_TEXT  # Hoisted repeated literal (2026-09-10)
 from help_display import HelpDisplay
 
 # Import the problem sets from the module files
@@ -572,7 +573,7 @@ class GameplayScreen(tk.Toplevel):
                 x=20,                  # Position near left edge 
                 y=120                  # Position below the help button
             )
-            self.help_display.current_help_text = "Click HELP button for algebra assistance" 
+            self.help_display.current_help_text = DEFAULT_HELP_TEXT  # from constants 
             # Don't show help display or text until help button is clicked
             # self.after(800, self._ensure_help_display_visible) # Comment out to hide initially
         except Exception as e:
@@ -2711,7 +2712,7 @@ class GameplayScreen(tk.Toplevel):
                 self.help_display.show()   # Show with default text
                 
                 # Force initial visibility
-                self.help_display.current_help_text = "Click HELP button for algebra assistance"
+                self.help_display.current_help_text = DEFAULT_HELP_TEXT  # from constants
                 self.help_display.update_display()
                 
                 logging.info("Help display initialized successfully")
@@ -2911,7 +2912,7 @@ class GameplayScreen(tk.Toplevel):
         """Reset help display to avoid index errors after transition"""
         try:
             if hasattr(self, 'help_display') and self.help_display:
-                self.help_display.current_help_text = "Click HELP button for algebra assistance"
+                self.help_display.current_help_text = DEFAULT_HELP_TEXT  # from constants
                 self.help_display.update_display()
         except Exception as e:
             logging.error(f"Error resetting help display: {e}")

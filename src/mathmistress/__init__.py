@@ -23,6 +23,7 @@ _legacy_modules = [
     "lock_animation_improved",
     "window_b_solution_symbols",
     "WormsWindow_B",
+    "constants",
 ]
 
 for _name in _legacy_modules:
