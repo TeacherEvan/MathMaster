@@ -149,3 +149,15 @@ derived from the structural signals above — they name concrete extractions
   its next tick.
 - implementer: `cron_surgical_impl.py` will pick this plan up once the reviewer
   marks it `READY` or `READY-WITH-WARNINGS`.
+
+
+## REVIEW 2026-09-11T19:51:24.963970+07:00
+
+**Verdict:** `NEEDS-REVISION`
+
+**Structural check:** objectives=12 file_header=✓ imports=✓ why=✓ dod=✓ security=✓
+
+**Gaps:**
+1. **OBJ-005–OBJ-012 are identical filler.** Eight of twelve objectives are the same "Hardening pass N" template with no concrete targets, contradicting the plan's own v2 claim of being "file-aware" and "NOT a generic N-slice filler."
+2. **TypeScript/Python toolchain mismatch.** The plan references `pnpm`, `knip`, `ts-prune`, `constants.ts`, `strings.ts`, and `index.ts` barrels — but the target file is `gameplay_screen.py` (Python/tkinter). OBJ-001 through OBJ-003 are anchored to tooling and file patterns that don't apply to this codebase.
+3. **Structural check reports objectives=0.** None of the 12 objectives carry the required header/imports/why/DoD/security sections. OBJ-004's line-reduction target (3,047 → ≤1,523) also lacks a concrete extraction map — it says "cumulative extractions" without specifying which sub-components are extracted into which files.
