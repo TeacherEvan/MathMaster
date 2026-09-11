@@ -185,3 +185,15 @@ Duplicate plans (09-06…09-09) + NEEDS-REVISION plan (09-10) moved to
 ### Blocker
 OBJ-004 (file reduction) is the only open item. It needs a real extraction
 pass, out of scope for this budget. Awaiting user authorization.
+
+
+## REVIEW 2026-09-11T09:24:49.239216+07:00
+
+**Verdict:** `NEEDS-REVISION`
+
+**Structural check:** objectives=12 file_header=✓ imports=✓ why=✓ dod=✓ security=✓
+
+**Gaps:**
+1. **Language mismatch**: File is `.py` (Python/tkinter), but objectives reference TypeScript tooling (`.ts` barrels, `pnpm`, `knip`, `ts-prune`). The entire plan targets the wrong ecosystem.
+2. **Generic filler objectives**: OBJ-005–OBJ-012 are identical "Hardening pass N" entries with no distinct content — exactly the N-slice filler the header claims to avoid. The plan's own structural analysis reports `objectives=0`, contradicting the 12 objectives listed.
+3. **No DOD / security / why sections**: Structural check shows `has_dod=None`, `has_security=None`, `has_why=None` — the plan lacks definition-of-done, security considerations, and a substantive "why" beyond a one-liner. OBJ-004's acceptance criteria (full build+test+e2e gate) is stated but no DOD ties it to the extraction work.

@@ -1,0 +1,11 @@
+{
+  "plan": "2026-09-04-bigfile-MathMaster-gameplay_screen.py.md",
+  "verdict": "NEEDS-REVISION",
+  "ready_for_impl": false,
+  "gaps": [
+    "**Language mismatch**: File is `.py` (Python/tkinter), but objectives reference TypeScript tooling (`.ts` barrels, `pnpm`, `knip`, `ts-prune`). The entire plan targets the wrong ecosystem.",
+    "**Generic filler objectives**: OBJ-005\u2013OBJ-012 are identical \"Hardening pass N\" entries with no distinct content \u2014 exactly the N-slice filler the header claims to avoid. The plan's own structural analysis reports `objectives=0`, contradicting the 12 objectives listed.",
+    "**No DOD / security / why sections**: Structural check shows `has_dod=None`, `has_security=None`, `has_why=None` \u2014 the plan lacks definition-of-done, security considerations, and a substantive \"why\" beyond a one-liner. OBJ-004's acceptance criteria (full build+test+e2e gate) is stated but no DOD ties it to the extraction work."
+  ],
+  "reviewed_at": "2026-09-11T09:24:49.240040+07:00"
+}
