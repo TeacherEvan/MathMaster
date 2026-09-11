@@ -149,3 +149,39 @@ derived from the structural signals above — they name concrete extractions
   its next tick.
 - implementer: `cron_surgical_impl.py` will pick this plan up once the reviewer
   marks it `READY` or `READY-WITH-WARNINGS`.
+
+
+---
+
+## RESOLUTION 2026-09-11 (surgical-implementation audit)
+
+**Status: IMPLEMENTED (commit 61179f0) — plan is the live pointer; do not re-derive.**
+
+### What shipped
+- `src/mathmistress/constants.py` created with `DEFAULT_HELP_TEXT`,
+  `EQUATION_PATTERN_A`, `EQUATION_PATTERN_B`, `EQUATION_PATTERN_B_PREFIX`.
+- Imported at line 22 of `gameplay_screen.py`; 13 references; raw literal
+  `"Click HELP button for algebra assistance"` count = 0.
+- Syntax verified (`ast.parse` OK); `constants` module imports cleanly.
+
+### Objective-by-objective
+| OBJ | Claim | Actual |
+|-----|-------|--------|
+| 001 | Hoist `solution_symbol_display` (×5) | **Misidentified.** It is an attribute (`self.solution_symbol_display`), 66 occurrences, not a string literal. Not hoistable. |
+| 002 | knip / ts-prune | **Inapplicable** — Python file, no TS toolchain. |
+| 003 | Audit `index.ts` barrels | **Inapplicable** — no TS barrels in this package. |
+| 004 | Reduce below 1522 lines | **Not met.** 3047 lines remain. Requires genuine module extraction (63 functions, 1 class), not a literal hoist. |
+| 005–012 | Hardening passes 5–12 | **Filler.** Eight verbatim-identical objectives with zero structural basis. |
+
+### Residual repeats (f-string interpolated, not hoistable)
+- `sol_{line_idx}_{char_idx}` ×3 (tag format)
+- `level_{self.current_level}.json` ×3 (save path)
+- ` not in problem.split(` ×2 (condition check)
+
+### Archive
+Duplicate plans (09-06…09-09) + NEEDS-REVISION plan (09-10) moved to
+`docs/plans/.archive/`. Cron runtime markers (`.impl/`, `.review/`) archived too.
+
+### Blocker
+OBJ-004 (file reduction) is the only open item. It needs a real extraction
+pass, out of scope for this budget. Awaiting user authorization.
