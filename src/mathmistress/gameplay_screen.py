@@ -3,7 +3,6 @@ import tkinter as tk
 import random
 import time
 import logging
-import math  # For math functions in gameplay animations
 import json
 import os
 import traceback # Added import
@@ -94,10 +93,10 @@ def generate_solution_steps(problem_input): # Renamed to avoid confusion
 
     # If problem contains newlines (likely pre-formatted steps)
     if "\\n" in problem: # Check for literal \\n in string if problems are defined like "Step1\\nStep2"
-        logging.info(f"[generate_solution_steps] Found literal '\\\\n' in problem. Splitting by '\\\\n'.")
+        logging.info("[generate_solution_steps] Found literal '\\n' in problem. Splitting by '\\n'.")
         return [step.strip() for step in problem.split("\\n") if step.strip()]
     if "\n" in problem: # Check for actual newline characters
-        logging.info(f"[generate_solution_steps] Found actual newline character in problem. Splitting by newline.")
+        logging.info("[generate_solution_steps] Found actual newline character in problem. Splitting by newline.")
         return [step.strip() for step in problem.split("\n") if step.strip()]
 
     logging.info(f"[generate_solution_steps] No newlines found. Proceeding to parse equation structure for: '{problem}'")
@@ -284,7 +283,7 @@ def generate_solution_steps(problem_input): # Renamed to avoid confusion
                     # Also check if b_div_val is 0, which would create invalid math (x/a = 0)
                     if b_div_val == 0:
                         logging.warning(f"[generate_solution_steps] Invalid equation x/a=0 for '{problem}' - solution would be x=0.")
-                        return [original_problem_for_steps, f"x = 0"]
+                        return [original_problem_for_steps, "x = 0"]
                     result = a_div_val * b_div_val
                     logging.info(f"[generate_solution_steps] Parsed x/a=b for '{problem}' -> a={a_div_val}, b={b_div_val}")
                     return [original_problem_for_steps, f"x = {b_div_val} × {a_div_val}", f"x = {result}"]
@@ -831,7 +830,7 @@ class GameplayScreen(tk.Toplevel):
             if self.help_system.currently_targeted_char_details and \
                self.help_system.currently_targeted_char_details['line_idx'] == transported_line_idx and \
                self.help_system.currently_targeted_char_details['char_idx'] == transported_char_idx:
-                logging.info(f"Symbol targeted by help system was transported by a worm. Resetting help target.")
+                logging.info("Symbol targeted by help system was transported by a worm. Resetting help target.")
                 self.help_system.reset_help_target() # Reset help if the target is gone
         
         # self._update_score_display() # TODO: Implement or verify this method / Commented out due to AttributeError
@@ -1762,7 +1761,7 @@ class GameplayScreen(tk.Toplevel):
             original_line_idx = clicked_symbol_info['original_line_idx']
             original_char_idx = clicked_symbol_info['original_char_idx']
             original_char_tag = clicked_symbol_info['original_char_tag']
-            revealed_color = "#336699"  # Standard revealed color
+            "#336699"  # Standard revealed color (unused local removed by pyflakes pass)
 
             logging.info(f"[SYMBOL_RETURN_DEBUG] Clicked '{clicked_char}' (transported). Original: L{original_line_idx}C{original_char_idx}, Tag: {original_char_tag}.")
             logging.info(f"[SYMBOL_RETURN_DEBUG] self.visible_chars BEFORE add: {self.visible_chars}")
@@ -1772,12 +1771,12 @@ class GameplayScreen(tk.Toplevel):
                 self.visible_chars.add((original_line_idx, original_char_idx))
                 logging.info(f"[SYMBOL_RETURN_DEBUG] self.visible_chars AFTER add: {self.visible_chars}")
 
-                logging.info(f"[SYMBOL_RETURN_DEBUG] Calling solution_symbol_display.update_data to redraw Window B.")
+                logging.info("[SYMBOL_RETURN_DEBUG] Calling solution_symbol_display.update_data to redraw Window B.")
                 if self.solution_symbol_display:
                     self.solution_symbol_display.update_data(self.current_solution_steps, self.visible_chars)
                 logging.info(f"[SYMBOL_RETURN_DEBUG] update_data finished. Attempting flash_char_green for L{original_line_idx}C{original_char_idx}.")
                 
-                # self.flash_char_green(original_char_tag, revealed_color) # Flash it # Old call
+                # self.flash_char_green(original_char_tag, "#336699") # Flash it # Old call
                 if self.solution_symbol_display:
                     self.solution_symbol_display.flash_symbol_color(
                         original_line_idx, 
@@ -1946,7 +1945,7 @@ class GameplayScreen(tk.Toplevel):
                 if self.solution_symbol_display:
                     logging.info(f"[reveal_char] Preparing to call solution_symbol_display.reveal_symbol for ({line_idx}, {char_idx}) for char '{char_to_reveal_for_log}'.")
                     self.solution_symbol_display.reveal_symbol(line_idx, char_idx) # Uses its own red color
-                    logging.info(f"[reveal_char] Successfully called reveal_symbol. Now flashing green using SolutionSymbolDisplay.")
+                    logging.info("[reveal_char] Successfully called reveal_symbol. Now flashing green using SolutionSymbolDisplay.")
                     
                     # Flash the character green briefly using SolutionSymbolDisplay
                     self.solution_symbol_display.flash_symbol_color(
@@ -2596,7 +2595,7 @@ class GameplayScreen(tk.Toplevel):
             flash_height = 80
             
             # Create a temporary highlight rectangle
-            flash_id = self.solution_canvas.create_rectangle(
+            self.solution_canvas.create_rectangle(
                 flash_x, flash_y,
                 flash_x + flash_width, flash_y + flash_height,
                 fill="#AAFFAA",  # Light green
