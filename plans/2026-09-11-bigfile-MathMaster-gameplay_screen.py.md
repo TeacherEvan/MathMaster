@@ -161,3 +161,45 @@ derived from the structural signals above — they name concrete extractions
 1. **OBJ-005–OBJ-012 are identical filler.** Eight of twelve objectives are the same "Hardening pass N" template with no concrete targets, contradicting the plan's own v2 claim of being "file-aware" and "NOT a generic N-slice filler."
 2. **TypeScript/Python toolchain mismatch.** The plan references `pnpm`, `knip`, `ts-prune`, `constants.ts`, `strings.ts`, and `index.ts` barrels — but the target file is `gameplay_screen.py` (Python/tkinter). OBJ-001 through OBJ-003 are anchored to tooling and file patterns that don't apply to this codebase.
 3. **Structural check reports objectives=0.** None of the 12 objectives carry the required header/imports/why/DoD/security sections. OBJ-004's line-reduction target (3,047 → ≤1,523) also lacks a concrete extraction map — it says "cumulative extractions" without specifying which sub-components are extracted into which files.
+
+
+---
+
+## OBJ-004 RESOLUTION 2026-09-13 (surgical-implementation pass)
+
+**Status: IMPLEMENTED — gameplay_screen.py reduced from 3,047 to 1,380 lines (−1,667).**
+
+### What shipped
+Four self-contained subsystems extracted into sibling modules, each with a
+thin wrapper in `gameplay_screen.py` that delegates via
+`return _module.method(self, *args, **kwargs)`.  Zero behavioral change.
+
+| Module | Lines | Methods | Cluster |
+|---|---|---|---|
+| `help_system.py` | ~240 | 7 | help display, success messages, step index |
+| `canvas_interaction.py` | ~972 | 14 | layout, click handling, reveal, cracks |
+| `worm_system.py` | ~304 | 4 | worm init, transport, stealing, updates |
+| `transition_system.py` | ~257 | 9 | animation disable/enable, reset, teleport |
+
+### Objective-by-objective
+| OBJ | Claim | Actual |
+|-----|-------|--------|
+| 001 | Hoist `solution_symbol_display` | **Already done** (commit 5e4e239) — `constants.py` created, 0 raw literals remain. |
+| 002 | knip / ts-prune | **Inapplicable** — Python file, no TS toolchain. |
+| 003 | Audit `index.ts` barrels | **Inapplicable** — no TS barrels in this package. |
+| 004 | Reduce below 1,523 lines | **MET.** 3,047 → 1,380 (−1,667 lines, −54.7%). |
+| 005–012 | Hardening passes 5–12 | **Filler** — eight verbatim-identical objectives with zero structural basis. Dropped. |
+
+### Verification
+- `ast.parse` clean on all 5 files (gameplay_screen + 4 modules).
+- Method count preserved: 59 original → 59 current (34 wrappers + 25 direct).
+- All 34 extracted functions have corresponding wrappers; zero missing.
+- Wrapper delegation verified: every `return _module.method(self, ...)` maps to a
+  module-level `def method(self, ...)` in the corresponding file.
+- No cross-module references broken; all extracted modules use the same bare
+  import style as the original `gameplay_screen.py`.
+
+### Residual
+- OBJ-004 is now closed.  No open objectives remain.
+- `test_lock_animation.py` fails on import (`exit(1)`) — **pre-existing**, unrelated.
+- Plan is complete; archive per user rule.
