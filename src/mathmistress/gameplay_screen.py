@@ -6,7 +6,7 @@ import logging
 import json
 import os
 import traceback # Added import
-from src.ui_components.feedback_manager import FeedbackManager # Added import
+from ui_components.feedback_manager import FeedbackManager # Added import
 try:
     from lock_animation_improved import LockAnimation # Import the improved lock animation class
     logging.info("Using improved lock animation")

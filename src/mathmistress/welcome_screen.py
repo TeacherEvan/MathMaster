@@ -7,7 +7,7 @@ import math  # Added for pulsating calculations
 from gameplay_screen import GameplayScreen
 from level_select_screen import LevelSelectScreen
 from stoic_quotes import get_random_quote
-from src.visual_components.welcome_screen import (
+from visual_components.welcome_screen import (
     MatrixBackground,
     MathSymbols,
     ProgressBar
