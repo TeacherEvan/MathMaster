@@ -208,3 +208,4 @@ test_imports.py
 docs/.scratch-audit/
 
 # V2 surgical-implementation audit scratch (per skill pitfalls)
+docs/plans/.scratch-audit/
