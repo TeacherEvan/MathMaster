@@ -19,10 +19,10 @@ from WormsWindow_B import WormAnimation # Import the worm animation class
 from window_b_solution_symbols import SolutionSymbolDisplay # Added import
 from stoic_quotes import get_random_quote
 from constants import DEFAULT_HELP_TEXT, EQUATION_PATTERN_A, EQUATION_PATTERN_B, EQUATION_PATTERN_B_PREFIX  # Hoisted repeated literals (2026-09-10)
-from help_system import _help_system  # Extracted help subsystem (2026-09-13)
-from canvas_interaction import _canvas  # Extracted canvas subsystem (2026-09-13)
-from worm_system import _worm  # Extracted worm subsystem (2026-09-13)
-from transition_system import _transition  # Extracted transition subsystem (2026-09-13)
+import help_system as _help_system  # Extracted help subsystem (2026-09-13)
+import canvas_interaction as _canvas  # Extracted canvas subsystem (2026-09-13)
+import worm_system as _worm  # Extracted worm subsystem (2026-09-13)
+import transition_system as _transition  # Extracted transition subsystem (2026-09-13)
 from help_display import HelpDisplay
 
 # Import the problem sets from the module files
